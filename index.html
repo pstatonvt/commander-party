@@ -442,14 +442,6 @@
                     </div>
                 </div>
 
-                <label class="flex items-start gap-2.5 text-xs text-stone-300 cursor-pointer bg-stone-900/80 p-3.5 rounded-xl border border-stone-800">
-                    <input type="checkbox" id="avoidRepeats" checked class="mt-0.5">
-                    <div>
-                        <span class="font-medium text-white">Avoid repeat pods</span>
-                        <p class="text-[11px] text-stone-500">Seats players with people they haven't shared a pod with in other rounds, as far as the chosen strategy allows. In Tournament Mode, players move at most one table up or down to make this work.</p>
-                    </div>
-                </label>
-
                 <div id="hatIssues"></div>
 
                 <div class="text-xs text-stone-400 bg-amber-950/30 border border-amber-800/40 p-3 rounded-lg flex items-start gap-2">
@@ -2286,7 +2278,7 @@
             const label = `Round ${currentRound + 1}`;
             document.getElementById('hatTitle').innerText = `${label} Pod Scrambler`;
             document.getElementById('hatWarning').innerText =
-                `This replaces ${label}'s seat assignments and re-assigns all players across the current tables. Locked pairs always sit together. Other rounds are not changed.`;
+                `This replaces ${label}'s seat assignments and re-assigns all players across the current tables. Players get new opponents wherever the strategy allows, and locked pairs always sit together. Other rounds are not changed.`;
             renderIssues('hatIssues');
             updateTournamentOption();
             document.getElementById('hatModal').classList.remove('hidden');
@@ -2301,12 +2293,11 @@
             hatIcon.classList.add('hat-anim');
 
             const strategy = document.querySelector('input[name="hatStrategy"]:checked').value;
-            const avoidRepeats = document.getElementById('avoidRepeats').checked;
 
             setTimeout(() => {
                 hatIcon.classList.remove('hat-anim');
                 closeHatDrawModal();
-                drawSeats(strategy, avoidRepeats);
+                drawSeats(strategy);
                 saveState();
                 renderAll();
 
@@ -2316,11 +2307,11 @@
             }, 800);
         }
 
-        // Seats every player for the current round using the chosen strategy.
-        // With avoidRepeats, tries many draws, swaps players to cut repeat pods, and keeps the best.
-        function drawSeats(strategy, avoidRepeats = false) {
-            const counts = avoidRepeats ? pastPodCounts() : null;
-            if (!counts || counts.size === 0) {
+        // Seats every player for the current round using the chosen strategy. When other rounds have
+        // seating, tries many draws, swaps players to cut repeat pods, and keeps the best.
+        function drawSeats(strategy) {
+            const counts = pastPodCounts();
+            if (counts.size === 0) {
                 drawOnce(strategy);
                 return;
             }
