@@ -442,6 +442,14 @@
                     </div>
                 </div>
 
+                <label class="flex items-start gap-2.5 text-xs text-stone-300 cursor-pointer bg-stone-900/80 p-3.5 rounded-xl border border-stone-800">
+                    <input type="checkbox" id="avoidRepeats" checked class="mt-0.5">
+                    <div>
+                        <span class="font-medium text-white">Avoid repeat pods</span>
+                        <p class="text-[11px] text-stone-500">Seats players with people they haven't shared a pod with in other rounds, as far as the chosen strategy allows. In Tournament Mode, players move at most one table up or down to make this work.</p>
+                    </div>
+                </label>
+
                 <div id="hatIssues"></div>
 
                 <div class="text-xs text-stone-400 bg-amber-950/30 border border-amber-800/40 p-3 rounded-lg flex items-start gap-2">
@@ -1110,6 +1118,15 @@
                 }
             }
 
+            if (seated.length > 0) {
+                const repeats = repeatPairs(pastPodCounts());
+                if (repeats.length > 0) {
+                    const names = repeats.slice(0, 4).map(r => `${r.a.name} & ${r.b.name}`).join(', ');
+                    const more = repeats.length > 4 ? ` and ${repeats.length - 4} more` : '';
+                    issues.push({ text: `${repeats.length === 1 ? 'One pair has' : `${repeats.length} pairs have`} already shared a pod in another round: ${names}${more}.` });
+                }
+            }
+
             const reported = new Set();
             players.forEach(p => {
                 if (!p.partnerId || reported.has(p.id)) return;
@@ -1500,14 +1517,17 @@
             const podsEl = document.getElementById('displayPods');
             const unseatedEl = document.getElementById('displayUnseated');
             const seated = players.filter(p => p.tableId !== null);
+            const ranks = displayRanks();
 
             if (seated.length === 0) {
+                // Between rounds in Tournament Mode, the leaderboard fills the wait
                 podsEl.innerHTML = `
-                    <div class="disp-in col-span-full py-24 text-center text-stone-400">
+                    <div class="disp-in col-span-full ${ranks ? 'py-10' : 'py-24'} text-center text-stone-400">
                         <i class="fa-solid fa-hat-wizard text-5xl text-stone-600 mb-5"></i>
                         <p class="font-display text-3xl text-stone-300">Round ${currentRound + 1} hasn't been drawn yet</p>
                         <p class="mt-2 text-lg text-stone-500">Seats will appear here once the hat draw is done.</p>
                     </div>
+                    ${ranks ? `<div class="col-span-full flex justify-center"><div class="w-full max-w-md">${leadersCard(ranks, 0)}</div></div>` : ''}
                 `;
                 unseatedEl.innerHTML = '';
                 fitDisplay();
@@ -1530,12 +1550,19 @@
                             ${seatedHere.map(p => `
                                 <li class="flex items-center gap-3 rounded-xl bg-black/20 px-3 py-2.5">
                                     <span class="w-7 h-7 rounded-full bg-stone-800 text-stone-400 text-sm font-semibold flex items-center justify-center shrink-0 tabular-nums">${p.seatIndex + 1}</span>
-                                    <span class="${nameSizeClass(p.name)} font-semibold text-stone-50 leading-tight break-words min-w-0">${escapeHtml(p.name)}</span>
+                                    <span class="min-w-0">
+                                        <span class="block ${nameSizeClass(p.name)} font-semibold text-stone-50 leading-tight break-words">${escapeHtml(p.name)}</span>
+                                        ${ranks && ranks.has(p.id) ? `
+                                            <span class="block mt-0.5 text-sm font-semibold tabular-nums text-stone-400">
+                                                #${ranks.get(p.id).rank}
+                                                <span class="text-amber-300 ml-1.5"><i class="fa-solid fa-heart text-rose-400 text-[10px] mr-1"></i>${ranks.get(p.id).total}</span>
+                                            </span>` : ''}
+                                    </span>
                                 </li>
                             `).join('')}
                         </ol>
                     </div>
-                `).join('');
+                `).join('') + (ranks ? leadersStrip(ranks, tables.length * 70) : '');
 
             const unseated = players.filter(p => p.tableId === null);
             unseatedEl.innerHTML = unseated.length === 0 ? '' : `
@@ -1545,6 +1572,70 @@
                 </div>
             `;
             fitDisplay();
+        }
+
+        // Tournament Mode standings for the display, or null when off or no results yet.
+        // Equal totals with equal latest-round life share a rank (1, 2, 2, 4).
+        function displayRanks() {
+            if (!isTournament()) return null;
+            const standings = getStandings().filter(s => s.hasResults);
+            if (standings.length === 0) return null;
+            const ranks = new Map();
+            standings.forEach((s, i) => {
+                const prev = standings[i - 1];
+                const rank = prev && prev.total === s.total && prev.last === s.last ? ranks.get(prev.player.id).rank : i + 1;
+                ranks.set(s.player.id, { rank, total: s.total, name: s.player.name });
+            });
+            return ranks;
+        }
+
+        function leadersCard(ranks, delay) {
+            const lastScored = results.reduce((last, r, i) => (roundHasResults(i) ? i : last), -1);
+            const top = [...ranks.values()].slice(0, 5);
+            const medal = rank => rank === 1 ? 'bg-amber-400 text-stone-950' : rank === 2 ? 'bg-stone-300 text-stone-900' : rank === 3 ? 'bg-amber-700 text-amber-50' : 'bg-stone-800 text-stone-400';
+            return `
+                <div class="disp-card disp-in p-5 sm:p-6" style="animation-delay: ${delay}ms;">
+                    <div class="flex items-start justify-between gap-3 mb-4">
+                        <div class="min-w-0">
+                            <div class="text-[11px] font-semibold uppercase tracking-[0.2em] text-stone-500">Tournament</div>
+                            <h3 class="font-display text-2xl sm:text-[1.7rem] font-semibold text-amber-300 leading-tight"><i class="fa-solid fa-trophy text-xl mr-1.5"></i>Leaders</h3>
+                        </div>
+                        <span class="shrink-0 mt-1 text-xs text-stone-400 px-2.5 py-1 rounded-full border border-stone-700">After Round ${lastScored + 1}</span>
+                    </div>
+                    <ol class="space-y-2.5">
+                        ${top.map(r => `
+                            <li class="flex items-center gap-3 rounded-xl bg-black/20 px-3 py-2.5">
+                                <span class="w-7 h-7 rounded-full text-sm font-bold flex items-center justify-center shrink-0 tabular-nums ${medal(r.rank)}">${r.rank}</span>
+                                <span class="${nameSizeClass(r.name)} font-semibold text-stone-50 leading-tight break-words min-w-0">${escapeHtml(r.name)}</span>
+                                <span class="ml-auto shrink-0 pl-2 text-base font-semibold text-amber-300 tabular-nums"><i class="fa-solid fa-heart text-rose-400 text-[10px] mr-1"></i>${r.total}</span>
+                            </li>
+                        `).join('')}
+                    </ol>
+                </div>
+            `;
+        }
+
+        function leadersStrip(ranks, delay) {
+            const lastScored = results.reduce((last, r, i) => (roundHasResults(i) ? i : last), -1);
+            const top = [...ranks.values()].slice(0, 5);
+            const medal = rank => rank === 1 ? 'bg-amber-400 text-stone-950' : rank === 2 ? 'bg-stone-300 text-stone-900' : rank === 3 ? 'bg-amber-700 text-amber-50' : 'bg-stone-800 text-stone-400';
+            return `
+                <div class="col-span-full disp-card disp-in px-5 py-4 flex items-center gap-x-6 gap-y-3 flex-wrap" style="animation-delay: ${delay}ms;">
+                    <div class="shrink-0">
+                        <div class="text-[11px] font-semibold uppercase tracking-[0.2em] text-stone-500">After Round ${lastScored + 1}</div>
+                        <div class="font-display text-2xl font-semibold text-amber-300 leading-tight"><i class="fa-solid fa-trophy text-lg mr-1.5"></i>Leaders</div>
+                    </div>
+                    <ol class="flex items-center gap-x-6 gap-y-2 flex-wrap">
+                        ${top.map(r => `
+                            <li class="flex items-center gap-2.5">
+                                <span class="w-7 h-7 rounded-full text-sm font-bold flex items-center justify-center shrink-0 tabular-nums ${medal(r.rank)}">${r.rank}</span>
+                                <span class="text-xl font-semibold text-stone-50">${escapeHtml(r.name)}</span>
+                                <span class="text-base font-semibold text-amber-300 tabular-nums"><i class="fa-solid fa-heart text-rose-400 text-[10px] mr-1"></i>${r.total}</span>
+                            </li>
+                        `).join('')}
+                    </ol>
+                </div>
+            `;
         }
 
         // Names with a long single word drop a size so the word stays whole in a narrow card
@@ -2210,11 +2301,12 @@
             hatIcon.classList.add('hat-anim');
 
             const strategy = document.querySelector('input[name="hatStrategy"]:checked').value;
+            const avoidRepeats = document.getElementById('avoidRepeats').checked;
 
             setTimeout(() => {
                 hatIcon.classList.remove('hat-anim');
                 closeHatDrawModal();
-                drawSeats(strategy);
+                drawSeats(strategy, avoidRepeats);
                 saveState();
                 renderAll();
 
@@ -2224,8 +2316,33 @@
             }, 800);
         }
 
-        // Seats every player for the current round using the chosen strategy
-        function drawSeats(strategy) {
+        // Seats every player for the current round using the chosen strategy.
+        // With avoidRepeats, tries many draws, swaps players to cut repeat pods, and keeps the best.
+        function drawSeats(strategy, avoidRepeats = false) {
+            const counts = avoidRepeats ? pastPodCounts() : null;
+            if (!counts || counts.size === 0) {
+                drawOnce(strategy);
+                return;
+            }
+            let best = null;
+            let bestCost = Infinity;
+            for (let attempt = 0; attempt < 40 && bestCost > 0; attempt++) {
+                drawOnce(strategy);
+                reduceRepeats(strategy, counts);
+                const cost = seatingRepeatCost(counts);
+                if (cost < bestCost) {
+                    bestCost = cost;
+                    best = players.map(p => [p, p.tableId, p.seatIndex]);
+                }
+            }
+            best.forEach(([p, tableId, seatIndex]) => {
+                p.tableId = tableId;
+                p.seatIndex = seatIndex;
+            });
+        }
+
+        // One draw with the chosen strategy, no repeat checking
+        function drawOnce(strategy) {
             players.forEach(p => {
                 p.tableId = null;
                 p.seatIndex = null;
@@ -2253,6 +2370,118 @@
             } else {
                 seatUnitsBalanced(units);
             }
+        }
+
+        // ---------- Avoiding repeat pods ----------
+
+        const pairKey = (a, b) => (a < b ? `${a}|${b}` : `${b}|${a}`);
+
+        // How many times each pair of players has shared a pod in the other rounds
+        function pastPodCounts() {
+            const ids = new Set(players.map(p => p.id));
+            const counts = new Map();
+            rounds.forEach((assignments, i) => {
+                if (i === currentRound) return;
+                const pods = new Map();
+                Object.entries(assignments || {}).forEach(([id, seat]) => {
+                    if (!ids.has(id) || !seat || seat.tableId == null) return;
+                    if (!pods.has(seat.tableId)) pods.set(seat.tableId, []);
+                    pods.get(seat.tableId).push(id);
+                });
+                pods.forEach(members => {
+                    for (let x = 0; x < members.length; x++) {
+                        for (let y = x + 1; y < members.length; y++) {
+                            const key = pairKey(members[x], members[y]);
+                            counts.set(key, (counts.get(key) || 0) + 1);
+                        }
+                    }
+                });
+            });
+            return counts;
+        }
+
+        // Locked partners always share a pod, so they never count as a repeat
+        function isLockedPair(a, b) {
+            const p = players.find(x => x.id === a);
+            return !!p && p.partnerId === b;
+        }
+
+        // Repeat pairings in the current round's seating
+        function repeatPairs(counts) {
+            const found = [];
+            tables.forEach(t => {
+                const here = players.filter(p => p.tableId === t.id);
+                for (let x = 0; x < here.length; x++) {
+                    for (let y = x + 1; y < here.length; y++) {
+                        const times = counts.get(pairKey(here[x].id, here[y].id)) || 0;
+                        if (times > 0 && !isLockedPair(here[x].id, here[y].id)) found.push({ a: here[x], b: here[y], times });
+                    }
+                }
+            });
+            return found;
+        }
+
+        function seatingRepeatCost(counts) {
+            return repeatPairs(counts).reduce((sum, r) => sum + r.times, 0);
+        }
+
+        // Swaps players between pods while that lowers the repeat count. Swaps only happen where the
+        // strategy still holds: same experience level for the skill strategies, at most one table from
+        // the original placement in Tournament Mode, anyone for a pure draw. Locked pairs swap as a unit
+        // with another pair.
+        function reduceRepeats(strategy, counts) {
+            const units = buildUnits(players.filter(p => p.tableId !== null));
+            const tableIndex = new Map(tables.map((t, i) => [t.id, i]));
+            const unitTable = units.map(u => u[0].tableId);
+            const startIndex = unitTable.map(id => tableIndex.get(id));
+            const members = new Map(tables.map(t => [t.id, []]));
+            units.forEach((u, i) => members.get(unitTable[i]).push(...u.map(p => p.id)));
+            const unitIds = units.map(u => u.map(p => p.id));
+
+            const allowed = (a, b) => {
+                if (units[a].length !== units[b].length) return false;
+                if (strategy === 'skill' || strategy === 'mixed') return unitRank(units[a]) === unitRank(units[b]);
+                if (strategy === 'tournament') {
+                    return Math.abs(startIndex[a] - tableIndex.get(unitTable[b])) <= 1
+                        && Math.abs(startIndex[b] - tableIndex.get(unitTable[a])) <= 1;
+                }
+                return true;
+            };
+            const ties = (ids, others) => {
+                let total = 0;
+                ids.forEach(i => others.forEach(j => { total += counts.get(pairKey(i, j)) || 0; }));
+                return total;
+            };
+
+            let improved = true;
+            for (let pass = 0; improved && pass < 25; pass++) {
+                improved = false;
+                for (let a = 0; a < units.length; a++) {
+                    for (let b = a + 1; b < units.length; b++) {
+                        const A = unitTable[a];
+                        const B = unitTable[b];
+                        if (A === B || !allowed(a, b)) continue;
+                        const restA = members.get(A).filter(id => !unitIds[a].includes(id));
+                        const restB = members.get(B).filter(id => !unitIds[b].includes(id));
+                        const before = ties(unitIds[a], restA) + ties(unitIds[b], restB);
+                        const after = ties(unitIds[a], restB) + ties(unitIds[b], restA);
+                        if (after < before) {
+                            members.set(A, [...restA, ...unitIds[b]]);
+                            members.set(B, [...restB, ...unitIds[a]]);
+                            unitTable[a] = B;
+                            unitTable[b] = A;
+                            improved = true;
+                        }
+                    }
+                }
+            }
+
+            const byId = new Map(players.map(p => [p.id, p]));
+            members.forEach((ids, tableId) => ids.forEach((id, seat) => {
+                const p = byId.get(id);
+                p.tableId = tableId;
+                p.seatIndex = seat;
+            }));
         }
 
         function shuffle(arr) {
