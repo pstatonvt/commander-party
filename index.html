@@ -106,6 +106,25 @@
         .hat-anim {
             animation: shuffleHat 0.6s ease-in-out infinite;
         }
+
+        /* Touch screens: no double-tap zoom on controls, no hover-only buttons, bigger tap areas */
+        button, select, input, summary {
+            touch-action: manipulation;
+        }
+        @media (hover: none) {
+            .touch-show {
+                opacity: 1 !important;
+            }
+        }
+        @media (pointer: coarse) {
+            .tap-target {
+                min-width: 2.25rem;
+                min-height: 2.25rem;
+                display: inline-flex;
+                align-items: center;
+                justify-content: center;
+            }
+        }
     </style>
 </head>
 <body class="min-h-screen flex flex-col justify-between antialiased">
@@ -135,6 +154,9 @@
                     </div>
                     <button id="hatDrawBtn" onclick="openHatDrawModal()" class="px-4 py-2 bg-felt-600 hover:bg-felt-500 text-white font-medium text-sm rounded-lg flex items-center gap-2 transition active:scale-95">
                         <i class="fa-solid fa-hat-wizard text-amber-300"></i> Hat Draw (Randomize)
+                    </button>
+                    <button onclick="openDisplayMode()" class="px-3.5 py-2 bg-stone-800 hover:bg-stone-700 text-stone-200 border border-stone-700 font-medium text-sm rounded-lg flex items-center gap-2 transition active:scale-95" title="Full-screen seating for everyone to read">
+                        <i class="fa-solid fa-tv text-felt-400"></i> Show Seating
                     </button>
                     <button onclick="addTable()" class="px-3.5 py-2 bg-stone-800 hover:bg-stone-700 text-stone-200 border border-stone-700 font-medium text-sm rounded-lg flex items-center gap-2 transition active:scale-95">
                         <i class="fa-solid fa-plus text-felt-400"></i> Add Table
@@ -437,6 +459,32 @@
                     <i class="fa-solid fa-trash-can"></i> Yes, Clear All Data
                 </button>
             </div>
+        </div>
+    </div>
+
+    <!-- Show Seating: full-screen view for the room -->
+    <div id="displayMode" class="fixed inset-0 z-[60] bg-mtg-bg hidden overflow-y-auto">
+        <div class="min-h-full p-5 sm:p-8 lg:p-10 flex flex-col gap-6 sm:gap-8">
+            <div class="flex items-center justify-between gap-4 flex-wrap">
+                <div class="flex items-center gap-3 sm:gap-4">
+                    <button id="displayPrev" onclick="displayRoundStep(-1)" class="w-12 h-12 rounded-xl bg-stone-800 hover:bg-stone-700 border border-stone-700 text-stone-200 text-lg flex items-center justify-center transition disabled:opacity-30" title="Previous round">
+                        <i class="fa-solid fa-chevron-left"></i>
+                    </button>
+                    <h2 id="displayTitle" class="text-4xl sm:text-5xl font-bold text-white tracking-tight">Round 1</h2>
+                    <button id="displayNext" onclick="displayRoundStep(1)" class="w-12 h-12 rounded-xl bg-stone-800 hover:bg-stone-700 border border-stone-700 text-stone-200 text-lg flex items-center justify-center transition disabled:opacity-30" title="Next round">
+                        <i class="fa-solid fa-chevron-right"></i>
+                    </button>
+                </div>
+                <button onclick="closeDisplayMode()" class="h-12 px-5 rounded-xl bg-stone-800 hover:bg-stone-700 border border-stone-700 text-stone-200 text-base font-medium flex items-center gap-2 transition">
+                    <i class="fa-solid fa-xmark"></i> Close
+                </button>
+            </div>
+
+            <div id="displayPods" class="grid gap-5 sm:gap-6" style="grid-template-columns: repeat(auto-fit, minmax(280px, 1fr));">
+                <!-- Pods render here -->
+            </div>
+
+            <div id="displayUnseated"></div>
         </div>
     </div>
 
@@ -923,7 +971,111 @@
             renderPotluckSummary();
             updateStats();
             renderIssues('issuesPanel');
+            if (isDisplayOpen()) renderDisplay();
         }
+
+        // ---------- Show Seating (full-screen view for the room) ----------
+
+        let wakeLock = null;
+
+        function isDisplayOpen() {
+            const el = document.getElementById('displayMode');
+            return !!el && !el.classList.contains('hidden');
+        }
+
+        function openDisplayMode() {
+            document.getElementById('displayMode').classList.remove('hidden');
+            document.body.style.overflow = 'hidden';
+            renderDisplay();
+            requestWakeLock();
+        }
+
+        function closeDisplayMode() {
+            document.getElementById('displayMode').classList.add('hidden');
+            document.body.style.overflow = '';
+            releaseWakeLock();
+        }
+
+        function displayRoundStep(delta) {
+            const next = currentRound + delta;
+            if (next < 0 || next >= rounds.length) return;
+            switchRound(next); // re-renders the display through renderAll
+        }
+
+        function renderDisplay() {
+            document.getElementById('displayTitle').innerText = `Round ${currentRound + 1}`;
+            document.getElementById('displayPrev').disabled = currentRound === 0;
+            document.getElementById('displayNext').disabled = currentRound >= rounds.length - 1;
+
+            const podsEl = document.getElementById('displayPods');
+            const unseatedEl = document.getElementById('displayUnseated');
+            const seated = players.filter(p => p.tableId !== null);
+
+            if (seated.length === 0) {
+                podsEl.innerHTML = `
+                    <div class="col-span-full py-24 text-center text-stone-400">
+                        <i class="fa-solid fa-hat-wizard text-5xl text-stone-600 mb-4"></i>
+                        <p class="text-2xl">Round ${currentRound + 1} hasn't been drawn yet.</p>
+                    </div>
+                `;
+                unseatedEl.innerHTML = '';
+                return;
+            }
+
+            podsEl.innerHTML = tables
+                .map(table => ({ table, seatedHere: seated.filter(p => p.tableId === table.id).sort((a, b) => a.seatIndex - b.seatIndex) }))
+                .filter(({ seatedHere }) => seatedHere.length > 0)
+                .map(({ table, seatedHere }) => `
+                    <div class="bg-mtg-card border border-mtg-border rounded-2xl p-5 sm:p-6">
+                        <div class="flex items-baseline justify-between gap-3 pb-3 mb-4 border-b border-mtg-border">
+                            <h3 class="text-2xl font-bold text-felt-300 break-words">${escapeHtml(table.name)}</h3>
+                            <span class="text-sm text-stone-500 shrink-0">${seatedHere.length} players</span>
+                        </div>
+                        <ol class="space-y-3">
+                            ${seatedHere.map(p => `
+                                <li class="flex items-baseline gap-3">
+                                    <span class="text-base text-stone-500 tabular-nums w-5 shrink-0">${p.seatIndex + 1}</span>
+                                    <span class="text-2xl sm:text-3xl font-semibold text-white break-words min-w-0">${escapeHtml(p.name)}</span>
+                                </li>
+                            `).join('')}
+                        </ol>
+                    </div>
+                `).join('');
+
+            const unseated = players.filter(p => p.tableId === null);
+            unseatedEl.innerHTML = unseated.length === 0 ? '' : `
+                <div class="text-stone-400 text-xl">
+                    <span class="font-semibold text-amber-300">Not seated yet:</span>
+                    ${unseated.map(p => escapeHtml(p.name)).join(', ')}
+                </div>
+            `;
+        }
+
+        // Stops the screen dimming while seating is on display (supported in current Safari and Chrome)
+        async function requestWakeLock() {
+            try {
+                if ('wakeLock' in navigator) wakeLock = await navigator.wakeLock.request('screen');
+            } catch (err) {
+                wakeLock = null;
+            }
+        }
+
+        function releaseWakeLock() {
+            if (wakeLock) wakeLock.release().catch(() => {});
+            wakeLock = null;
+        }
+
+        // The browser drops the wake lock when the tab is hidden; take it back on return
+        document.addEventListener('visibilitychange', () => {
+            if (document.visibilityState === 'visible' && isDisplayOpen()) requestWakeLock();
+        });
+
+        document.addEventListener('keydown', e => {
+            if (!isDisplayOpen()) return;
+            if (e.key === 'Escape') closeDisplayMode();
+            if (e.key === 'ArrowLeft') displayRoundStep(-1);
+            if (e.key === 'ArrowRight') displayRoundStep(1);
+        });
 
         function getExperienceBadgeClass(experience) {
             switch (experience) {
@@ -975,10 +1127,10 @@
                         ${partnerBadge(player, 'pl-5')}
                     </div>
                     <div class="flex items-center gap-0.5 shrink-0">
-                        <button onclick="openEditPlayerModal('${player.id}')" class="text-stone-500 hover:text-felt-400 p-1.5 transition" title="Edit Player">
+                        <button onclick="openEditPlayerModal('${player.id}')" class="tap-target text-stone-500 hover:text-felt-400 p-1.5 transition" title="Edit Player">
                             <i class="fa-solid fa-pen text-xs"></i>
                         </button>
-                        <button onclick="removePlayer('${player.id}')" class="text-stone-600 hover:text-rose-400 p-1.5 opacity-0 group-hover:opacity-100 transition" title="Delete Player">
+                        <button onclick="removePlayer('${player.id}')" class="tap-target touch-show text-stone-600 hover:text-rose-400 p-1.5 opacity-0 group-hover:opacity-100 transition" title="Delete Player">
                             <i class="fa-solid fa-trash-can text-xs"></i>
                         </button>
                     </div>
@@ -1014,10 +1166,10 @@
                                 <div class="flex items-start justify-between gap-1 mb-2">
                                     <span class="font-bold text-xs text-felt-400">Seat ${i + 1}</span>
                                     <div class="flex items-center gap-1">
-                                        <button onclick="openEditPlayerModal('${occupant.id}')" class="text-stone-500 hover:text-felt-400 text-xs p-0.5" title="Edit Player">
+                                        <button onclick="openEditPlayerModal('${occupant.id}')" class="tap-target text-stone-500 hover:text-felt-400 text-xs p-0.5" title="Edit Player">
                                             <i class="fa-solid fa-pen text-[10px]"></i>
                                         </button>
-                                        <button onclick="unseatPlayer('${occupant.id}')" class="text-stone-500 hover:text-rose-400 text-xs p-0.5" title="Unassign seat">
+                                        <button onclick="unseatPlayer('${occupant.id}')" class="tap-target text-stone-500 hover:text-rose-400 text-xs p-0.5" title="Unassign seat">
                                             <i class="fa-solid fa-xmark"></i>
                                         </button>
                                     </div>
