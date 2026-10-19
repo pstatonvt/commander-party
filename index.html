@@ -107,6 +107,22 @@
             animation: shuffleHat 0.6s ease-in-out infinite;
         }
 
+        /* Dropdowns: our own chevron, set in from the right edge, in place of the browser's arrow */
+        select {
+            -webkit-appearance: none;
+            appearance: none;
+            background-image: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 12 12'%3E%3Cpath d='M2.5 4.5 6 8l3.5-3.5' fill='none' stroke='%23a8a29e' stroke-width='1.6' stroke-linecap='round' stroke-linejoin='round'/%3E%3C/svg%3E");
+            background-repeat: no-repeat;
+            background-position: right 0.85rem center;
+            background-size: 0.75rem;
+            padding-right: 2.25rem !important;
+        }
+        select.select-compact {
+            background-position: right 0.5rem center;
+            background-size: 0.65rem;
+            padding-right: 1.6rem !important;
+        }
+
         /* Show Seating view */
         .font-display {
             font-family: 'Fraunces', Georgia, serif;
@@ -195,17 +211,26 @@
                 </div>
             </div>
 
-            <div class="flex flex-col items-center lg:items-end gap-2">
-                <!-- Event actions -->
-                <div class="flex items-center gap-2 flex-wrap justify-center lg:justify-end">
-                    <!-- Autosave indicator badge -->
-                    <div id="saveStatus" class="hidden sm:flex items-center gap-1.5 px-3 py-1.5 rounded-lg bg-stone-900 border border-stone-800 text-xs text-stone-400 font-medium transition-all duration-300">
-                        <i id="saveStatusIcon" class="fa-solid fa-cloud text-stone-500"></i>
-                        <span id="saveStatusText">Saved</span>
-                    </div>
-                    <button id="hatDrawBtn" onclick="openHatDrawModal()" class="px-4 py-2 bg-felt-600 hover:bg-felt-500 text-white font-medium text-sm rounded-lg flex items-center gap-2 transition active:scale-95">
+            <div class="flex items-start justify-center lg:justify-end gap-2 flex-wrap">
+                <!-- Autosave indicator badge -->
+                <div id="saveStatus" class="hidden sm:flex items-center gap-1.5 px-3 py-1.5 mt-0.5 rounded-lg bg-stone-900 border border-stone-800 text-xs text-stone-400 font-medium transition-all duration-300">
+                    <i id="saveStatusIcon" class="fa-solid fa-cloud text-stone-500"></i>
+                    <span id="saveStatusText">Saved</span>
+                </div>
+
+                <!-- Hat Draw, with the Tournament Mode switch beneath it -->
+                <div class="flex flex-col gap-2">
+                    <button id="hatDrawBtn" onclick="openHatDrawModal()" class="w-full px-4 py-2 bg-felt-600 hover:bg-felt-500 text-white font-medium text-sm rounded-lg flex items-center justify-center gap-2 transition active:scale-95">
                         <i class="fa-solid fa-hat-wizard text-amber-300"></i> Hat Draw (Randomize)
                     </button>
+                    <button id="tournamentToggle" onclick="toggleTournamentMode()" aria-pressed="false" class="w-full px-3 py-1.5 border font-medium text-xs rounded-lg flex items-center justify-center gap-1.5 transition">
+                        <i class="fa-solid fa-trophy"></i> <span id="tournamentToggleLabel">Tournament Mode</span>
+                    </button>
+                </div>
+
+                <div class="flex flex-col items-stretch gap-2">
+                <!-- Event actions -->
+                <div class="flex items-center gap-2 flex-wrap justify-center lg:justify-end">
                     <button onclick="openDisplayMode()" class="px-3.5 py-2 bg-stone-800 hover:bg-stone-700 text-stone-200 border border-stone-700 font-medium text-sm rounded-lg flex items-center gap-2 transition active:scale-95" title="Full-screen seating for everyone to read">
                         <i class="fa-solid fa-tv text-felt-400"></i> Show Seating
                     </button>
@@ -217,18 +242,19 @@
                     </button>
                 </div>
 
-                <!-- Data actions -->
-                <div class="flex items-center gap-2 flex-wrap justify-center lg:justify-end">
-                    <button onclick="exportData()" class="px-3 py-1.5 bg-stone-800 hover:bg-stone-700 text-stone-300 border border-stone-700 font-medium text-xs rounded-lg flex items-center gap-1.5 transition" title="Download the whole event as a file">
+                <!-- Data actions: three equal-width buttons spanning the row above -->
+                <div class="grid grid-cols-3 gap-2">
+                    <button onclick="exportData()" class="px-3 py-1.5 bg-stone-800 hover:bg-stone-700 text-stone-300 border border-stone-700 font-medium text-xs rounded-lg flex items-center justify-center gap-1.5 transition" title="Download the whole event as a file">
                         <i class="fa-solid fa-file-export text-emerald-400"></i> Export
                     </button>
-                    <button onclick="triggerImport()" class="px-3 py-1.5 bg-stone-800 hover:bg-stone-700 text-stone-300 border border-stone-700 font-medium text-xs rounded-lg flex items-center gap-1.5 transition" title="Load an event from an exported file">
+                    <button onclick="triggerImport()" class="px-3 py-1.5 bg-stone-800 hover:bg-stone-700 text-stone-300 border border-stone-700 font-medium text-xs rounded-lg flex items-center justify-center gap-1.5 transition" title="Load an event from an exported file">
                         <i class="fa-solid fa-file-import text-sky-400"></i> Import
                     </button>
                     <input type="file" id="importFile" accept=".json,application/json" class="hidden" onchange="handleImportFile(event)">
-                    <button onclick="openResetDataModal()" class="px-3 py-1.5 bg-stone-800 hover:bg-red-950/50 hover:text-red-300 text-stone-400 border border-stone-700 font-medium text-xs rounded-lg flex items-center gap-1.5 transition" title="Delete everything and start an empty event">
+                    <button onclick="openResetDataModal()" class="px-3 py-1.5 bg-stone-800 hover:bg-red-950/50 hover:text-red-300 text-stone-400 border border-stone-700 font-medium text-xs rounded-lg flex items-center justify-center gap-1.5 transition" title="Delete everything and start an empty event">
                         <i class="fa-solid fa-trash-arrow-up"></i> Clear All Data
                     </button>
+                </div>
                 </div>
             </div>
         </div>
@@ -345,8 +371,13 @@
                     </div>
                 </div>
 
-                <div id="roundTabs" class="flex flex-wrap gap-2">
-                    <!-- Round tabs render here -->
+                <div class="flex flex-wrap items-center justify-between gap-3">
+                    <div id="roundTabs" class="flex flex-wrap gap-2">
+                        <!-- Round tabs render here -->
+                    </div>
+                    <button id="resultsBtn" onclick="openResultsModal()" class="px-3.5 py-1.5 bg-stone-800 hover:bg-stone-700 text-stone-200 border border-stone-700 text-sm font-medium rounded-lg flex items-center gap-2 transition" title="Tournament Mode: enter life totals at the end of the round">
+                        <i class="fa-solid fa-trophy text-amber-400"></i> <span id="resultsBtnLabel">Round 1 Results</span>
+                    </button>
                 </div>
             </div>
 
@@ -374,7 +405,7 @@
                     <i id="hatIcon" class="fa-solid fa-hat-wizard text-3xl text-amber-400"></i>
                 </div>
                 <h3 id="hatTitle" class="text-xl font-bold text-white">Round 1 Pod Scrambler</h3>
-                <p class="text-xs text-stone-400 mt-1">Draw names from the hat to form fresh player pods, or seat them by experience.</p>
+                <p class="text-xs text-stone-400 mt-1">Draw names from the hat to form fresh player pods, or seat them by experience or standings.</p>
             </div>
 
             <div class="space-y-4 mb-6">
@@ -400,6 +431,13 @@
                             <div>
                                 <span class="font-medium text-white">Experienced with New Players</span>
                                 <p class="text-[11px] text-stone-500">Spreads veterans across every pod so each table has someone who can help newer players.</p>
+                            </div>
+                        </label>
+                        <label id="tournamentOption" class="flex items-center gap-2.5 text-xs text-stone-300 cursor-pointer">
+                            <input type="radio" name="hatStrategy" value="tournament" class="text-felt-600 focus:ring-felt-500">
+                            <div>
+                                <span class="font-medium text-white"><i class="fa-solid fa-trophy text-amber-400 mr-1"></i>Tournament Mode</span>
+                                <p id="tournamentHint" class="text-[11px] text-stone-500">Ranks players by total life from earlier rounds and seats the leaders together at Table 1, the next group at Table 2, and so on.</p>
                             </div>
                         </label>
                     </div>
@@ -435,6 +473,43 @@
 
             <div id="assignPlayerOptions" class="space-y-2 max-h-60 overflow-y-auto pr-1">
                 <!-- List of unassigned players -->
+            </div>
+        </div>
+    </div>
+
+    <!-- Round Results (Tournament Mode) -->
+    <div id="resultsModal" class="fixed inset-0 bg-black/80 backdrop-blur-sm z-50 flex items-center justify-center hidden p-4">
+        <div class="bg-mtg-card border border-mtg-border rounded-2xl max-w-2xl w-full max-h-[90vh] overflow-y-auto p-6 shadow-2xl relative">
+            <button onclick="closeResultsModal()" class="absolute top-4 right-4 text-stone-400 hover:text-white">
+                <i class="fa-solid fa-xmark text-lg"></i>
+            </button>
+
+            <div class="mb-5 pr-6">
+                <h3 class="text-xl font-bold text-white flex items-center gap-2">
+                    <i class="fa-solid fa-trophy text-amber-400"></i> <span id="resultsTitle">Round 1 Results</span>
+                </h3>
+                <p class="text-xs text-stone-400 mt-1">Tournament Mode: enter each player's life total at the end of the round, using 0 for anyone knocked out. Totals add up across rounds, and the hat draw's Tournament Mode seats the leaders together.</p>
+            </div>
+
+            <form onsubmit="saveResults(event)">
+                <div id="resultsPods" class="grid grid-cols-1 sm:grid-cols-2 gap-4">
+                    <!-- Pods with life total inputs render here -->
+                </div>
+                <div class="flex gap-3 mt-5">
+                    <button type="button" onclick="closeResultsModal()" class="flex-1 py-2.5 bg-stone-800 hover:bg-stone-700 text-stone-300 font-medium text-sm rounded-lg transition">
+                        Close
+                    </button>
+                    <button id="saveResultsBtn" type="submit" class="flex-1 py-2.5 bg-felt-600 hover:bg-felt-500 text-white font-semibold text-sm rounded-lg transition flex items-center justify-center gap-2">
+                        <i class="fa-solid fa-check"></i> Save results
+                    </button>
+                </div>
+            </form>
+
+            <div class="mt-6 pt-5 border-t border-mtg-border">
+                <h4 class="text-sm font-semibold text-white mb-3 flex items-center gap-2">
+                    <i class="fa-solid fa-ranking-star text-felt-400"></i> Standings
+                </h4>
+                <div id="standingsList"></div>
             </div>
         </div>
     </div>
@@ -589,10 +664,10 @@
     <script>
         const STORAGE_KEY = 'mtg_commander_party_organizer_v1';
         const APP_ID = 'mtg-commander-pod-organizer';
-        const DATA_VERSION = 2;
+        const DATA_VERSION = 3;
 
         const EXPERIENCE_ORDER = { 'New': 1, 'Learning': 2, 'Experienced': 3, 'Veteran': 4 };
-        const DEFAULT_EVENT = { roundCount: 2, roundMinutes: 60 };
+        const DEFAULT_EVENT = { roundCount: 2, roundMinutes: 60, tournament: false };
         const MIN_POD = 3;
         const MAX_POD = 6;
 
@@ -622,6 +697,8 @@
         let tables = [];
         let eventSettings = { ...DEFAULT_EVENT };
         let rounds = [{}];
+        // Tournament Mode: life totals at the end of each round ({ playerId: life }), one entry per round
+        let results = [{}];
         let currentRound = 0;
         let saveTimeout = null;
 
@@ -684,7 +761,8 @@
             const ev = parsed.event || {};
             const cleanEvent = {
                 roundCount: clampInt(ev.roundCount, 1, 10, DEFAULT_EVENT.roundCount),
-                roundMinutes: clampInt(ev.roundMinutes, 5, 240, DEFAULT_EVENT.roundMinutes)
+                roundMinutes: clampInt(ev.roundMinutes, 5, 240, DEFAULT_EVENT.roundMinutes),
+                tournament: ev.tournament === true
             };
 
             let cleanRounds;
@@ -701,11 +779,26 @@
             while (cleanRounds.length < cleanEvent.roundCount) cleanRounds.push({});
             cleanRounds = cleanRounds.slice(0, cleanEvent.roundCount);
 
+            // Life totals: whole numbers 0-999 for players that still exist
+            let cleanResults = (Array.isArray(parsed.results) ? parsed.results : []).map(r => {
+                const out = {};
+                if (r && typeof r === 'object' && !Array.isArray(r)) {
+                    Object.entries(r).forEach(([id, value]) => {
+                        const life = parseInt(value, 10);
+                        if (Number.isFinite(life) && byId.has(String(id))) out[String(id)] = Math.min(999, Math.max(0, life));
+                    });
+                }
+                return out;
+            });
+            while (cleanResults.length < cleanEvent.roundCount) cleanResults.push({});
+            cleanResults = cleanResults.slice(0, cleanEvent.roundCount);
+
             return {
                 players: cleanPlayers,
                 tables: cleanTables,
                 event: cleanEvent,
                 rounds: cleanRounds,
+                results: cleanResults,
                 currentRound: clampInt(parsed.currentRound, 0, cleanEvent.roundCount - 1, 0)
             };
         }
@@ -715,6 +808,7 @@
             tables = state.tables;
             eventSettings = state.event;
             rounds = state.rounds;
+            results = state.results;
             currentRound = state.currentRound;
             loadRound(currentRound);
         }
@@ -733,6 +827,7 @@
                 tables: tables,
                 players: players.map(({ tableId, seatIndex, ...rest }) => rest),
                 rounds: rounds,
+                results: results,
                 currentRound: currentRound
             };
         }
@@ -897,6 +992,8 @@
             eventSettings.roundCount = count;
             while (rounds.length < count) rounds.push({});
             rounds = rounds.slice(0, count);
+            while (results.length < count) results.push({});
+            results = results.slice(0, count);
             if (currentRound >= count) currentRound = count - 1;
             loadRound(currentRound);
             saveState();
@@ -931,14 +1028,18 @@
                 const cls = active
                     ? 'bg-felt-600 border-felt-500 text-white'
                     : 'bg-stone-900 border-stone-700 text-stone-300 hover:border-felt-500/60';
+                const scored = isTournament() && roundHasResults(i)
+                    ? '<i class="fa-solid fa-flag-checkered text-[11px] opacity-80" title="Results entered"></i>'
+                    : '';
                 return `
                     <button onclick="switchRound(${i})" class="px-3.5 py-1.5 rounded-lg border text-sm font-medium flex items-center gap-2 transition ${cls}">
-                        Round ${i + 1}
+                        Round ${i + 1} ${scored}
                         <span class="text-[10px] px-1.5 py-0.5 rounded ${active ? 'bg-felt-800 text-felt-100' : 'bg-stone-800 text-stone-400'}">${seated}/${players.length}</span>
                     </button>
                 `;
             }).join('');
             document.getElementById('roundTabs').innerHTML = tabs;
+            document.getElementById('resultsBtnLabel').innerText = `Round ${currentRound + 1} Results`;
         }
 
         // ---------- Seating suggestions ----------
@@ -1061,6 +1162,7 @@
         // ---------- Rendering ----------
 
         function renderAll() {
+            renderTournamentToggle();
             renderRoundBar();
             renderTables();
             renderUnassignedRoster();
@@ -1542,6 +1644,7 @@
                                     <div class="font-semibold text-sm text-white truncate">${escapeHtml(occupant.name)}</div>
                                     <div class="mt-1 flex items-center gap-1.5 flex-wrap">
                                         <span class="text-[10px] px-1.5 py-0.2 rounded border ${getExperienceBadgeClass(occupant.experience)}">${occupant.experience}</span>
+                                        ${lifeBadge(occupant)}
                                     </div>
                                     ${occupant.dish ? `<div class="mt-1 text-[11px] text-amber-400/90 truncate"><i class="fa-solid fa-utensils text-[9px] mr-1"></i>${escapeHtml(occupant.dish)}</div>` : ''}
                                     ${partnerBadge(occupant, 'mt-1')}
@@ -1575,7 +1678,7 @@
                                         class="w-full min-w-0 truncate bg-transparent text-base font-bold text-white focus:bg-stone-900 px-1.5 py-0.5 rounded border border-transparent focus:border-stone-700 outline-none">
                                 </div>
                                 <div class="flex items-center gap-1 shrink-0">
-                                    <select onchange="updateTableCapacity('${table.id}', this.value)" class="bg-stone-900 border border-stone-700 text-xs text-stone-300 rounded px-2 py-1 outline-none">
+                                    <select onchange="updateTableCapacity('${table.id}', this.value)" class="select-compact bg-stone-900 border border-stone-700 text-xs text-stone-300 rounded px-2 py-1 outline-none">
                                         ${capacityOptions}
                                     </select>
                                     <button onclick="removeTable('${table.id}')" class="w-7 h-7 flex items-center justify-center rounded text-stone-500 hover:text-rose-400 hover:bg-rose-950/40 transition" title="Delete Table">
@@ -1720,6 +1823,7 @@
             if (p) setPartner(p, null);
             players = players.filter(player => player.id !== playerId);
             rounds.forEach(r => { delete r[playerId]; });
+            results.forEach(r => { delete r[playerId]; });
             saveState();
             renderAll();
         }
@@ -1877,6 +1981,176 @@
             closeAssignModal();
         }
 
+        // ---------- Tournament Mode: round results and standings ----------
+
+        function isTournament() {
+            return eventSettings.tournament === true;
+        }
+
+        // Turning Tournament Mode off only hides the results tools; entered life totals are kept
+        function toggleTournamentMode() {
+            eventSettings.tournament = !isTournament();
+            saveState();
+            renderAll();
+        }
+
+        function renderTournamentToggle() {
+            const on = isTournament();
+            const btn = document.getElementById('tournamentToggle');
+            btn.setAttribute('aria-pressed', String(on));
+            btn.className = `w-full px-3 py-1.5 border font-medium text-xs rounded-lg flex items-center justify-center gap-1.5 transition ${on
+                ? 'bg-amber-500/15 border-amber-500/60 text-amber-200 hover:bg-amber-500/25'
+                : 'bg-stone-800 border-stone-700 text-stone-300 hover:bg-stone-700'}`;
+            btn.title = on ? 'Turn off Tournament Mode (results are kept)' : 'Turn on Tournament Mode: enter life totals and seat by standings';
+            document.getElementById('tournamentToggleLabel').innerText = on ? 'Tournament Mode: On' : 'Tournament Mode';
+            btn.querySelector('i').className = `fa-solid fa-trophy ${on ? 'text-amber-300' : 'text-amber-400/70'}`;
+            document.getElementById('resultsBtn').classList.toggle('hidden', !on);
+        }
+
+        function roundHasResults(index) {
+            return !!results[index] && Object.keys(results[index]).length > 0;
+        }
+
+        // Standings from the rounds before `uptoRound` (all rounds by default).
+        // Total life across those rounds; a round without a result counts as 0.
+        // Ties go to the higher life in the most recent round that has one.
+        function getStandings(uptoRound = results.length) {
+            return players
+                .map(p => {
+                    const lives = results.slice(0, uptoRound).map(r => (r && Number.isFinite(r[p.id]) ? r[p.id] : null));
+                    const recorded = lives.filter(v => v !== null);
+                    const last = [...lives].reverse().find(v => v !== null);
+                    return {
+                        player: p,
+                        lives,
+                        total: recorded.reduce((sum, v) => sum + v, 0),
+                        last: last === undefined ? -1 : last,
+                        hasResults: recorded.length > 0
+                    };
+                })
+                .sort((a, b) => (b.total - a.total) || (b.last - a.last));
+        }
+
+        function lifeBadge(player) {
+            if (!isTournament()) return '';
+            const s = getStandings().find(x => x.player.id === player.id);
+            if (!s || !s.hasResults) return '';
+            return `<span class="text-[10px] px-1.5 py-0.2 rounded border border-stone-700 text-stone-300" title="Total life across rounds"><i class="fa-solid fa-heart text-rose-400 text-[8px] mr-0.5"></i>${s.total}</span>`;
+        }
+
+        function updateTournamentOption() {
+            const available = results.slice(0, currentRound).some((r, i) => roundHasResults(i));
+            const option = document.getElementById('tournamentOption');
+            const radio = option.querySelector('input');
+            option.classList.toggle('hidden', !isTournament());
+            if (!isTournament()) {
+                if (radio.checked) document.querySelector('input[name="hatStrategy"][value="pure"]').checked = true;
+                return;
+            }
+            radio.disabled = !available;
+            option.classList.toggle('opacity-50', !available);
+            option.classList.toggle('cursor-pointer', available);
+            document.getElementById('tournamentHint').innerText = available
+                ? 'Ranks players by total life from earlier rounds and seats the leaders together at Table 1, the next group at Table 2, and so on.'
+                : 'Enter results for an earlier round first (Round Results button beside the round tabs).';
+            if (!available && radio.checked) document.querySelector('input[name="hatStrategy"][value="pure"]').checked = true;
+        }
+
+        function openResultsModal() {
+            if (players.length === 0) {
+                alert("Please add players to the roster first!");
+                return;
+            }
+            renderResultsModal();
+            document.getElementById('resultsModal').classList.remove('hidden');
+        }
+
+        function closeResultsModal() {
+            document.getElementById('resultsModal').classList.add('hidden');
+        }
+
+        function renderResultsModal() {
+            document.getElementById('resultsTitle').innerText = `Round ${currentRound + 1} Results`;
+            const entered = results[currentRound] || {};
+            const seated = players.filter(p => p.tableId !== null);
+            const podsEl = document.getElementById('resultsPods');
+
+            if (seated.length === 0) {
+                podsEl.innerHTML = `<p class="sm:col-span-2 text-sm text-stone-500 italic py-4">Nobody is seated in Round ${currentRound + 1} yet. Seat the round first, then enter results when it ends.</p>`;
+            } else {
+                podsEl.innerHTML = tables
+                    .map(t => ({ t, here: seated.filter(p => p.tableId === t.id).sort((a, b) => a.seatIndex - b.seatIndex) }))
+                    .filter(({ here }) => here.length > 0)
+                    .map(({ t, here }) => `
+                        <div class="bg-stone-900/60 border border-stone-800 rounded-xl p-3">
+                            <div class="text-sm font-semibold text-felt-300 mb-2 truncate">${escapeHtml(t.name)}</div>
+                            ${here.map(p => `
+                                <label class="flex items-center justify-between gap-3 py-1">
+                                    <span class="text-sm text-white truncate">${escapeHtml(p.name)}</span>
+                                    <input type="number" inputmode="numeric" min="0" max="999" placeholder="Life" data-player="${p.id}"
+                                        value="${Number.isFinite(entered[p.id]) ? entered[p.id] : ''}"
+                                        class="w-20 shrink-0 bg-stone-900 border border-stone-700 rounded-lg px-2 py-1.5 text-sm text-white text-right focus:outline-none focus:border-felt-500">
+                                </label>
+                            `).join('')}
+                        </div>
+                    `).join('');
+            }
+            renderStandings();
+        }
+
+        function saveResults(e) {
+            e.preventDefault();
+            const entry = {};
+            document.querySelectorAll('#resultsPods input[data-player]').forEach(input => {
+                if (input.value.trim() === '') return;
+                const life = parseInt(input.value, 10);
+                if (Number.isFinite(life)) entry[input.dataset.player] = Math.min(999, Math.max(0, life));
+            });
+            results[currentRound] = entry;
+            saveState();
+            renderAll();
+            renderStandings();
+
+            const btn = document.getElementById('saveResultsBtn');
+            btn.innerHTML = '<i class="fa-solid fa-circle-check"></i> Saved';
+            setTimeout(() => { btn.innerHTML = '<i class="fa-solid fa-check"></i> Save results'; }, 1500);
+        }
+
+        function renderStandings() {
+            const el = document.getElementById('standingsList');
+            const standings = getStandings();
+            if (!standings.some(s => s.hasResults)) {
+                el.innerHTML = '<p class="text-xs text-stone-500 italic">No results yet. Standings appear once a round has life totals.</p>';
+                return;
+            }
+            const roundHeaders = results.map((_, i) => `<th class="px-2 py-1.5 font-medium text-right">R${i + 1}</th>`).join('');
+            el.innerHTML = `
+                <div class="overflow-x-auto">
+                    <table class="w-full text-sm">
+                        <thead class="text-[11px] uppercase tracking-wider text-stone-500">
+                            <tr>
+                                <th class="px-2 py-1.5 font-medium text-left">#</th>
+                                <th class="px-2 py-1.5 font-medium text-left">Player</th>
+                                ${roundHeaders}
+                                <th class="px-2 py-1.5 font-medium text-right">Total</th>
+                            </tr>
+                        </thead>
+                        <tbody>
+                            ${standings.map((s, i) => `
+                                <tr class="border-t border-stone-800">
+                                    <td class="px-2 py-1.5 text-stone-500 tabular-nums">${i + 1}</td>
+                                    <td class="px-2 py-1.5 text-white">${escapeHtml(s.player.name)}</td>
+                                    ${s.lives.map(v => `<td class="px-2 py-1.5 text-right tabular-nums ${v === null ? 'text-stone-600' : v === 0 ? 'text-rose-400' : 'text-stone-300'}">${v === null ? '&ndash;' : v}</td>`).join('')}
+                                    ${results.slice(s.lives.length).map(() => '<td class="px-2 py-1.5 text-right text-stone-600">&ndash;</td>').join('')}
+                                    <td class="px-2 py-1.5 text-right font-semibold text-amber-300 tabular-nums">${s.total}</td>
+                                </tr>
+                            `).join('')}
+                        </tbody>
+                    </table>
+                </div>
+            `;
+        }
+
         // ---------- Hat draw ----------
 
         function openHatDrawModal() {
@@ -1889,6 +2163,7 @@
             document.getElementById('hatWarning').innerText =
                 `This replaces ${label}'s seat assignments and re-assigns all players across the current tables. Locked pairs always sit together. Other rounds are not changed.`;
             renderIssues('hatIssues');
+            updateTournamentOption();
             document.getElementById('hatModal').classList.remove('hidden');
         }
 
@@ -1928,6 +2203,13 @@
             if (strategy === 'skill') {
                 // Most experienced first, filled table by table so similar levels sit together
                 units.sort((a, b) => unitRank(b) - unitRank(a));
+                seatUnitsBalanced(units);
+            } else if (strategy === 'tournament') {
+                // Leaders first, filled table by table: the top group sits at Table 1, the next at Table 2...
+                // A locked pair ranks as its higher-placed member. Ties stay in shuffled order.
+                const rank = new Map(getStandings(currentRound).map(s => [s.player.id, s.total * 10000 + s.last + 1]));
+                const unitScore = unit => Math.max(...unit.map(p => rank.get(p.id) || 0));
+                units.sort((a, b) => unitScore(b) - unitScore(a));
                 seatUnitsBalanced(units);
             } else if (strategy === 'mixed') {
                 // Most experienced first, each one to the emptiest table,
