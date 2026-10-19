@@ -284,8 +284,7 @@
                             <select id="playerExperience" class="w-full bg-stone-900/90 border border-stone-700 rounded-lg px-3 py-2 text-sm text-white focus:outline-none focus:border-felt-500">
                                 <option value="New">New</option>
                                 <option value="Learning" selected>Learning</option>
-                                <option value="Experienced">Experienced</option>
-                                <option value="Veteran">Veteran</option>
+                                                                <option value="Veteran">Veteran</option>
                             </select>
                         </div>
                         <div>
@@ -534,8 +533,7 @@
                     <select id="editPlayerExperience" class="w-full bg-stone-900/90 border border-stone-700 rounded-lg px-3 py-2 text-sm text-white focus:outline-none focus:border-felt-500">
                         <option value="New">New</option>
                         <option value="Learning">Learning</option>
-                        <option value="Experienced">Experienced</option>
-                        <option value="Veteran">Veteran</option>
+                                                <option value="Veteran">Veteran</option>
                     </select>
                 </div>
                 <div>
@@ -673,7 +671,7 @@
         const APP_ID = 'mtg-commander-pod-organizer';
         const DATA_VERSION = 3;
 
-        const EXPERIENCE_ORDER = { 'New': 1, 'Learning': 2, 'Experienced': 3, 'Veteran': 4 };
+        const EXPERIENCE_ORDER = { 'New': 1, 'Learning': 2, 'Veteran': 3 };
         const DEFAULT_EVENT = { roundCount: 2, roundMinutes: 60, tournament: false };
         const MIN_POD = 3;
         const MAX_POD = 6;
@@ -683,11 +681,11 @@
         const DEFAULT_PLAYERS = [
             { id: '1', name: 'Player 1', experience: 'Learning', dish: 'Guacamole & Tortilla Chips', tableId: 'tbl_1', seatIndex: 0 },
             { id: '2', name: 'Player 2', experience: 'New', dish: 'Vegetarian Chili', tableId: 'tbl_1', seatIndex: 1 },
-            { id: '3', name: 'Player 3', experience: 'Experienced', dish: 'Craft Beer & Sodas', tableId: 'tbl_1', seatIndex: 2 },
+            { id: '3', name: 'Player 3', experience: 'Veteran', dish: 'Craft Beer & Sodas', tableId: 'tbl_1', seatIndex: 2 },
             { id: '4', name: 'Player 4', experience: 'Veteran', dish: 'Brownies & Cookies', tableId: 'tbl_1', seatIndex: 3 },
             { id: '5', name: 'Player 5', experience: 'Learning', dish: 'Hummus & Pita Chips', tableId: 'tbl_2', seatIndex: 0 },
             { id: '6', name: 'Player 6', experience: 'New', dish: 'Fruit Salad Platter', tableId: 'tbl_2', seatIndex: 1 },
-            { id: '7', name: 'Player 7', experience: 'Experienced', dish: 'Host (Drinks Bar)', tableId: 'tbl_2', seatIndex: 2 },
+            { id: '7', name: 'Player 7', experience: 'Veteran', dish: 'Host (Drinks Bar)', tableId: 'tbl_2', seatIndex: 2 },
             { id: '8', name: 'Player 8', experience: 'Learning', dish: 'Salsa & Wings', tableId: 'tbl_2', seatIndex: 3 }
         ];
 
@@ -730,8 +728,10 @@
 
         // Earlier saves stored a deck power level; map it onto an experience level
         function migratePlayer(p) {
+            // The four-level version had 'Experienced' between Learning and Veteran
+            if (p.experience === 'Experienced') return { ...p, experience: 'Veteran' };
             if (p.experience) return p;
-            const powerToExperience = { 'Precon': 'New', 'Casual': 'Learning', 'Mid': 'Experienced', 'High/cEDH': 'Veteran' };
+            const powerToExperience = { 'Precon': 'New', 'Casual': 'Learning', 'Mid': 'Veteran', 'High/cEDH': 'Veteran' };
             const { power, ...rest } = p;
             return { ...rest, experience: powerToExperience[power] || 'Learning' };
         }
@@ -1582,7 +1582,6 @@
             switch (experience) {
                 case 'New': return 'bg-emerald-950 text-emerald-300 border-emerald-800';
                 case 'Learning': return 'bg-blue-950 text-blue-300 border-blue-800';
-                case 'Experienced': return 'bg-amber-950 text-amber-300 border-amber-800';
                 case 'Veteran': return 'bg-rose-950 text-rose-300 border-rose-800';
                 default: return 'bg-stone-800 text-stone-300 border-stone-700';
             }
