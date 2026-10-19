@@ -655,6 +655,13 @@
         </div>
     </div>
 
+    <!-- Shown while the round timer runs but the browser is blocking sound (e.g. after a reload) -->
+    <div id="soundPrompt" class="hidden fixed inset-x-0 bottom-6 z-[70] flex justify-center px-4 pointer-events-none">
+        <button onclick="enableSoundFromPrompt()" class="soft-pulse pointer-events-auto px-5 py-3 rounded-2xl bg-amber-500 hover:bg-amber-400 text-stone-950 font-semibold text-base shadow-lg shadow-black/40 flex items-center gap-2.5 transition">
+            <i class="fa-solid fa-volume-xmark"></i> Tap to enable sound for the timer chimes
+        </button>
+    </div>
+
     <!-- Footer -->
     <footer class="mt-8 border-t border-mtg-border/50 py-4 text-center text-xs text-stone-600">
         Commander Party Pod Organizer &bull; Built for Magic: The Gathering Game Nights
@@ -1207,7 +1214,10 @@
             try {
                 const AC = window.AudioContext || window.webkitAudioContext;
                 if (!AC) return;
-                if (!audioCtx) audioCtx = new AC();
+                if (!audioCtx) {
+                    audioCtx = new AC();
+                    audioCtx.onstatechange = updateSoundPrompt;
+                }
                 // Play through the iPad's silent switch where Safari allows it
                 if (navigator.audioSession) navigator.audioSession.type = 'playback';
                 if (audioCtx.state !== 'running') audioCtx.resume().catch(() => {});
@@ -1242,6 +1252,29 @@
                 : [[587.33, 0], [880, 0.32]];
             const start = audioCtx.currentTime + 0.05;
             notes.forEach(([freq, at]) => bell(freq, start + at, kind === 'end' ? 1.8 : 1.5));
+        }
+
+        // Sound is only allowed once the browser has let the audio context run (needs a tap on iPad)
+        function soundReady() {
+            return !!audioCtx && audioCtx.state === 'running';
+        }
+
+        function updateSoundPrompt() {
+            const prompt = document.getElementById('soundPrompt');
+            if (!prompt) return;
+            prompt.classList.toggle('hidden', !(timer.endsAt && !soundReady()));
+        }
+
+        // The tap itself unlocks audio; a single soft note confirms the chimes will be heard
+        function enableSoundFromPrompt() {
+            unlockAudio();
+            if (!audioCtx) return;
+            audioCtx.resume()
+                .then(() => {
+                    bell(880, audioCtx.currentTime + 0.05, 0.9);
+                    updateSoundPrompt();
+                })
+                .catch(() => updateSoundPrompt());
         }
 
         function testChime() {
@@ -1391,6 +1424,8 @@
                     : started
                         ? '<i class="fa-solid fa-play"></i> Resume'
                         : '<i class="fa-solid fa-play"></i> Start round';
+
+            updateSoundPrompt();
 
             // Banner: only rewrite it when its state changes, so the fade-in doesn't replay every tick
             const bannerKey = done ? 'end' : (Date.now() < halfBannerUntil ? 'half' : 'none');
