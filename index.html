@@ -95,7 +95,7 @@
 
     <!-- Header -->
     <header class="bg-mtg-card/90 backdrop-blur border-b border-mtg-border sticky top-0 z-30 px-4 py-3 sm:px-8">
-        <div class="max-w-7xl mx-auto flex flex-col sm:flex-row items-center justify-between gap-4">
+        <div class="max-w-7xl mx-auto flex flex-col lg:flex-row items-center justify-between gap-4">
             <div class="flex items-center gap-3">
                 <div class="w-10 h-10 rounded-xl bg-gradient-to-br from-amber-500 to-purple-600 flex items-center justify-center text-white shadow-lg font-bold text-xl">
                     <i class="fa-solid font-bold fa-dice-d20"></i>
@@ -108,31 +108,38 @@
                 </div>
             </div>
 
-            <div class="flex items-center gap-2 sm:gap-3 flex-wrap justify-center">
-                <!-- Autosave indicator badge -->
-                <div id="saveStatus" class="hidden sm:flex items-center gap-1.5 px-3 py-1.5 rounded-lg bg-slate-900 border border-slate-800 text-xs text-slate-400 font-medium transition-all duration-300">
-                    <i id="saveStatusIcon" class="fa-solid fa-cloud text-slate-500"></i>
-                    <span id="saveStatusText">Saved</span>
+            <div class="flex flex-col items-center lg:items-end gap-2">
+                <!-- Event actions -->
+                <div class="flex items-center gap-2 flex-wrap justify-center lg:justify-end">
+                    <!-- Autosave indicator badge -->
+                    <div id="saveStatus" class="hidden sm:flex items-center gap-1.5 px-3 py-1.5 rounded-lg bg-slate-900 border border-slate-800 text-xs text-slate-400 font-medium transition-all duration-300">
+                        <i id="saveStatusIcon" class="fa-solid fa-cloud text-slate-500"></i>
+                        <span id="saveStatusText">Saved</span>
+                    </div>
+                    <button id="hatDrawBtn" onclick="openHatDrawModal()" class="px-4 py-2 bg-gradient-to-r from-purple-600 to-indigo-600 hover:from-purple-500 hover:to-indigo-500 text-white font-medium text-sm rounded-lg shadow-lg shadow-purple-900/40 flex items-center gap-2 transition active:scale-95">
+                        <i class="fa-solid fa-hat-wizard text-amber-300"></i> Hat Draw (Randomize)
+                    </button>
+                    <button onclick="addTable()" class="px-3.5 py-2 bg-slate-800 hover:bg-slate-700 text-slate-200 border border-slate-700 font-medium text-sm rounded-lg flex items-center gap-2 transition active:scale-95">
+                        <i class="fa-solid fa-plus text-purple-400"></i> Add Table
+                    </button>
+                    <button onclick="clearSeating()" class="px-3.5 py-2 bg-slate-800 hover:bg-slate-700 text-slate-300 border border-slate-700 font-medium text-sm rounded-lg flex items-center gap-2 transition" title="Unseat everyone in the current round without deleting the roster">
+                        <i class="fa-solid fa-arrow-rotate-left"></i> Reset Seats
+                    </button>
                 </div>
-                <button id="hatDrawBtn" onclick="openHatDrawModal()" class="px-4 py-2 bg-gradient-to-r from-purple-600 to-indigo-600 hover:from-purple-500 hover:to-indigo-500 text-white font-medium text-sm rounded-lg shadow-lg shadow-purple-900/40 flex items-center gap-2 transition active:scale-95">
-                    <i class="fa-solid fa-hat-wizard text-amber-300"></i> Hat Draw (Randomize)
-                </button>
-                <button onclick="addTable()" class="px-3.5 py-2 bg-slate-800 hover:bg-slate-700 text-slate-200 border border-slate-700 font-medium text-sm rounded-lg flex items-center gap-2 transition active:scale-95">
-                    <i class="fa-solid fa-plus text-purple-400"></i> Add Table
-                </button>
-                <button onclick="clearSeating()" class="px-3.5 py-2 bg-slate-800 hover:bg-slate-700 text-slate-300 border border-slate-700 font-medium text-sm rounded-lg flex items-center gap-2 transition" title="Unseat everyone in the current round without deleting the roster">
-                    <i class="fa-solid fa-arrow-rotate-left"></i> Reset Seats
-                </button>
-                <button onclick="exportData()" class="px-3.5 py-2 bg-slate-800 hover:bg-slate-700 text-slate-300 border border-slate-700 font-medium text-sm rounded-lg flex items-center gap-2 transition" title="Download the whole event as a file">
-                    <i class="fa-solid fa-file-export text-emerald-400"></i> Export
-                </button>
-                <button onclick="triggerImport()" class="px-3.5 py-2 bg-slate-800 hover:bg-slate-700 text-slate-300 border border-slate-700 font-medium text-sm rounded-lg flex items-center gap-2 transition" title="Load an event from an exported file">
-                    <i class="fa-solid fa-file-import text-sky-400"></i> Import
-                </button>
-                <input type="file" id="importFile" accept=".json,application/json" class="hidden" onchange="handleImportFile(event)">
-                <button onclick="openResetDataModal()" class="px-3.5 py-2 bg-slate-800 hover:bg-red-950/50 hover:text-red-300 text-slate-400 border border-slate-700 font-medium text-sm rounded-lg flex items-center gap-2 transition" title="Start fresh event with default state">
-                    <i class="fa-solid fa-trash-arrow-up"></i> Clear All Data
-                </button>
+
+                <!-- Data actions -->
+                <div class="flex items-center gap-2 flex-wrap justify-center lg:justify-end">
+                    <button onclick="exportData()" class="px-3 py-1.5 bg-slate-800 hover:bg-slate-700 text-slate-300 border border-slate-700 font-medium text-xs rounded-lg flex items-center gap-1.5 transition" title="Download the whole event as a file">
+                        <i class="fa-solid fa-file-export text-emerald-400"></i> Export
+                    </button>
+                    <button onclick="triggerImport()" class="px-3 py-1.5 bg-slate-800 hover:bg-slate-700 text-slate-300 border border-slate-700 font-medium text-xs rounded-lg flex items-center gap-1.5 transition" title="Load an event from an exported file">
+                        <i class="fa-solid fa-file-import text-sky-400"></i> Import
+                    </button>
+                    <input type="file" id="importFile" accept=".json,application/json" class="hidden" onchange="handleImportFile(event)">
+                    <button onclick="openResetDataModal()" class="px-3 py-1.5 bg-slate-800 hover:bg-red-950/50 hover:text-red-300 text-slate-400 border border-slate-700 font-medium text-xs rounded-lg flex items-center gap-1.5 transition" title="Delete everything and start an empty event">
+                        <i class="fa-solid fa-trash-arrow-up"></i> Clear All Data
+                    </button>
+                </div>
             </div>
         </div>
     </header>
@@ -195,7 +202,7 @@
 
                 <!-- Quick Potluck Summary Collapsible -->
                 <div class="mt-4 pt-3 border-t border-mtg-border">
-                    <details class="group">
+                    <details class="group" open>
                         <summary class="flex justify-between items-center font-medium text-xs text-slate-300 cursor-pointer list-none select-none">
                             <span class="flex items-center gap-2">
                                 <i class="fa-solid fa-utensils text-amber-400"></i> Potluck Contributions Summary (<span id="totalDishCount">0</span>)
