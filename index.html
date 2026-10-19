@@ -254,7 +254,7 @@
                 </div>
             </div>
 
-            <!-- Rounds: settings, tabs and timer -->
+            <!-- Rounds: settings and tabs -->
             <div class="bg-mtg-card border border-mtg-border rounded-xl p-4 flex flex-col gap-4">
                 <div class="flex flex-wrap items-end justify-between gap-4">
                     <div class="flex flex-wrap items-end gap-3">
@@ -269,17 +269,6 @@
                                 class="w-24 bg-stone-900/90 border border-stone-700 rounded-lg px-3 py-1.5 text-sm text-white focus:outline-none focus:border-felt-500">
                         </div>
                         <span id="eventLength" class="text-xs text-stone-500 pb-2"></span>
-                    </div>
-
-                    <!-- Round timer -->
-                    <div class="flex items-center gap-2">
-                        <span id="timerDisplay" class="font-mono text-2xl font-bold text-white tabular-nums">00:00</span>
-                        <button id="timerToggleBtn" onclick="toggleTimer()" class="px-3 py-1.5 bg-felt-600 hover:bg-felt-500 text-white text-xs font-semibold rounded-lg flex items-center gap-1.5 transition">
-                            <i class="fa-solid fa-play"></i> Start
-                        </button>
-                        <button onclick="resetTimer()" class="px-2.5 py-1.5 bg-stone-800 hover:bg-stone-700 text-stone-300 border border-stone-700 text-xs rounded-lg transition" title="Reset timer">
-                            <i class="fa-solid fa-rotate-left"></i>
-                        </button>
                     </div>
                 </div>
 
@@ -502,7 +491,6 @@
         // Initial Load
         window.onload = function() {
             loadSavedState();
-            resetTimer();
             renderAll();
         };
 
@@ -673,7 +661,6 @@
                 const summary = `${state.players.length} players, ${state.tables.length} tables and ${state.event.roundCount} rounds`;
                 if (!confirm(`Replace the current event with ${summary} from "${file.name}"?`)) return;
                 applyState(state);
-                resetTimer();
                 saveState();
                 renderAll();
             });
@@ -710,7 +697,6 @@
             localStorage.removeItem(STORAGE_KEY);
             applyState(emptyState());
             closeResetDataModal();
-            resetTimer();
             saveState();
             renderAll();
         }
@@ -758,7 +744,6 @@
             stashCurrentRound();
             currentRound = index;
             loadRound(currentRound);
-            resetTimer();
             saveState();
             renderAll();
         }
@@ -769,10 +754,7 @@
             eventSettings.roundCount = count;
             while (rounds.length < count) rounds.push({});
             rounds = rounds.slice(0, count);
-            if (currentRound >= count) {
-                currentRound = count - 1;
-                resetTimer();
-            }
+            if (currentRound >= count) currentRound = count - 1;
             loadRound(currentRound);
             saveState();
             renderAll();
@@ -780,7 +762,6 @@
 
         function updateRoundMinutes(value) {
             eventSettings.roundMinutes = clampInt(value, 5, 240, eventSettings.roundMinutes);
-            if (!timerEndsAt) resetTimer();
             saveState();
             renderAll();
         }
@@ -814,64 +795,6 @@
                 `;
             }).join('');
             document.getElementById('roundTabs').innerHTML = tabs;
-        }
-
-        // ---------- Round timer ----------
-
-        let timerEndsAt = null;     // timestamp while running
-        let timerRemaining = 0;     // seconds left while paused
-        let timerInterval = null;
-
-        function resetTimer() {
-            stopTimer();
-            timerRemaining = eventSettings.roundMinutes * 60;
-            renderTimer();
-        }
-
-        function stopTimer() {
-            if (timerInterval) clearInterval(timerInterval);
-            timerInterval = null;
-            timerEndsAt = null;
-        }
-
-        function toggleTimer() {
-            if (timerEndsAt) {
-                timerRemaining = secondsLeft();
-                stopTimer();
-            } else {
-                if (timerRemaining <= 0) timerRemaining = eventSettings.roundMinutes * 60;
-                timerEndsAt = Date.now() + timerRemaining * 1000;
-                timerInterval = setInterval(tickTimer, 250);
-            }
-            renderTimer();
-        }
-
-        function secondsLeft() {
-            if (!timerEndsAt) return timerRemaining;
-            return Math.max(0, Math.ceil((timerEndsAt - Date.now()) / 1000));
-        }
-
-        function tickTimer() {
-            if (secondsLeft() <= 0) {
-                stopTimer();
-                timerRemaining = 0;
-            }
-            renderTimer();
-        }
-
-        function renderTimer() {
-            const display = document.getElementById('timerDisplay');
-            const btn = document.getElementById('timerToggleBtn');
-            if (!display || !btn) return;
-            const left = secondsLeft();
-            const m = Math.floor(left / 60);
-            const sec = left % 60;
-            const pad = n => String(n).padStart(2, '0');
-            display.innerText = left <= 0 ? "Time's up" : `${pad(m)}:${pad(sec)}`;
-            display.className = `font-mono text-2xl font-bold tabular-nums ${left <= 0 ? 'text-rose-400' : left <= 300 ? 'text-amber-300' : 'text-white'}`;
-            btn.innerHTML = timerEndsAt
-                ? '<i class="fa-solid fa-pause"></i> Pause'
-                : `<i class="fa-solid fa-play"></i> ${left <= 0 ? 'Restart' : 'Start'}`;
         }
 
         // ---------- Seating suggestions ----------
