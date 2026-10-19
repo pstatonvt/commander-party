@@ -48,7 +48,7 @@
         }
     </script>
     <style>
-        @import url('https://fonts.googleapis.com/css2?family=Inter:wght@300;400;500;600;700&display=swap');
+        @import url('https://fonts.googleapis.com/css2?family=Fraunces:opsz,wght@9..144,500;9..144,600;9..144,700&family=Inter:wght@300;400;500;600;700&display=swap');
         :root {
             accent-color: #3f8a71;
         }
@@ -105,6 +105,57 @@
         }
         .hat-anim {
             animation: shuffleHat 0.6s ease-in-out infinite;
+        }
+
+        /* Show Seating view */
+        .font-display {
+            font-family: 'Fraunces', Georgia, serif;
+            font-optical-sizing: auto;
+        }
+        .display-stage {
+            background-color: #13110e;
+            background-image:
+                radial-gradient(1100px 520px at 50% -12%, rgba(63, 138, 113, 0.13), transparent 65%),
+                radial-gradient(900px 600px at 100% 110%, rgba(217, 164, 65, 0.05), transparent 60%);
+        }
+        .disp-card {
+            background: linear-gradient(180deg, #24201c, #1e1b18);
+            border: 1px solid #37322c;
+            border-radius: 1.25rem;
+            box-shadow: 0 10px 30px -18px rgba(0, 0, 0, 0.8);
+        }
+        .disp-icon-btn {
+            width: 2.75rem;
+            height: 2.75rem;
+            border-radius: 0.75rem;
+            background: #24201c;
+            border: 1px solid #37322c;
+            color: #d6d3d1;
+            display: inline-flex;
+            align-items: center;
+            justify-content: center;
+            flex-shrink: 0;
+            transition: background-color 0.15s ease;
+        }
+        .disp-icon-btn:hover {
+            background: #2e2a25;
+        }
+        .disp-icon-btn:disabled {
+            opacity: 0.3;
+        }
+        @keyframes dispIn {
+            from { opacity: 0; transform: translateY(6px); }
+            to { opacity: 1; transform: none; }
+        }
+        .disp-in {
+            animation: dispIn 0.45s ease both;
+        }
+        @keyframes softPulse {
+            0%, 100% { opacity: 1; }
+            50% { opacity: 0.6; }
+        }
+        .soft-pulse {
+            animation: dispIn 0.45s ease both, softPulse 2.4s ease-in-out 0.5s infinite;
         }
 
         /* Touch screens: no double-tap zoom on controls, no hover-only buttons, bigger tap areas */
@@ -463,24 +514,65 @@
     </div>
 
     <!-- Show Seating: full-screen view for the room -->
-    <div id="displayMode" class="fixed inset-0 z-[60] bg-mtg-bg hidden overflow-y-auto">
-        <div class="min-h-full p-5 sm:p-8 lg:p-10 flex flex-col gap-6 sm:gap-8">
-            <div class="flex items-center justify-between gap-4 flex-wrap">
-                <div class="flex items-center gap-3 sm:gap-4">
-                    <button id="displayPrev" onclick="displayRoundStep(-1)" class="w-12 h-12 rounded-xl bg-stone-800 hover:bg-stone-700 border border-stone-700 text-stone-200 text-lg flex items-center justify-center transition disabled:opacity-30" title="Previous round">
-                        <i class="fa-solid fa-chevron-left"></i>
-                    </button>
-                    <h2 id="displayTitle" class="text-4xl sm:text-5xl font-bold text-white tracking-tight">Round 1</h2>
-                    <button id="displayNext" onclick="displayRoundStep(1)" class="w-12 h-12 rounded-xl bg-stone-800 hover:bg-stone-700 border border-stone-700 text-stone-200 text-lg flex items-center justify-center transition disabled:opacity-30" title="Next round">
-                        <i class="fa-solid fa-chevron-right"></i>
-                    </button>
+    <div id="displayMode" class="display-stage fixed inset-0 z-[60] hidden overflow-y-auto">
+        <div class="min-h-full px-5 py-6 sm:px-10 sm:py-8 flex flex-col gap-6 sm:gap-8">
+
+            <!-- Top bar: round title on the left, timer on the right -->
+            <div class="flex items-start justify-between gap-6 flex-wrap">
+                <div class="flex flex-col gap-3">
+                    <div class="flex items-center gap-2 text-stone-500 text-xs sm:text-sm font-semibold uppercase tracking-[0.2em]">
+                        <i class="fa-solid fa-dice-d20 text-felt-400"></i> Commander Night
+                        <span class="text-stone-700">&bull;</span>
+                        <span id="dispClock" class="tabular-nums tracking-normal normal-case font-medium text-stone-400"></span>
+                    </div>
+                    <div class="flex items-center gap-3">
+                        <button id="displayPrev" onclick="displayRoundStep(-1)" class="disp-icon-btn" title="Previous round">
+                            <i class="fa-solid fa-chevron-left"></i>
+                        </button>
+                        <h2 class="font-display text-5xl sm:text-6xl font-semibold text-stone-50 leading-none">
+                            <span id="displayTitle">Round 1</span>
+                            <span id="displayOf" class="font-sans text-xl sm:text-2xl font-medium text-stone-500 align-baseline"></span>
+                        </h2>
+                        <button id="displayNext" onclick="displayRoundStep(1)" class="disp-icon-btn" title="Next round">
+                            <i class="fa-solid fa-chevron-right"></i>
+                        </button>
+                    </div>
                 </div>
-                <button onclick="closeDisplayMode()" class="h-12 px-5 rounded-xl bg-stone-800 hover:bg-stone-700 border border-stone-700 text-stone-200 text-base font-medium flex items-center gap-2 transition">
-                    <i class="fa-solid fa-xmark"></i> Close
-                </button>
+
+                <div class="flex items-center gap-4 sm:gap-5">
+                    <div class="relative w-28 h-28 sm:w-32 sm:h-32 shrink-0">
+                        <svg viewBox="0 0 120 120" class="w-full h-full -rotate-90" aria-hidden="true">
+                            <circle cx="60" cy="60" r="52" fill="none" stroke="#2b2722" stroke-width="8"/>
+                            <circle id="dispTimerRing" cx="60" cy="60" r="52" fill="none" stroke="#5aa48b" stroke-width="8" stroke-linecap="round"
+                                stroke-dasharray="326.73" stroke-dashoffset="0" style="transition: stroke-dashoffset 0.5s linear, stroke 0.6s ease;"/>
+                        </svg>
+                        <div class="absolute inset-0 flex items-center justify-center">
+                            <span id="dispTimerDigits" class="text-2xl sm:text-3xl font-semibold tabular-nums text-stone-50">60:00</span>
+                        </div>
+                    </div>
+                    <div class="flex flex-col gap-2">
+                        <span id="dispTimerStatus" class="text-sm text-stone-400">Ready</span>
+                        <div class="flex items-center gap-2">
+                            <button id="dispTimerToggle" onclick="toggleRoundTimer()" class="h-11 px-4 rounded-xl bg-felt-600 hover:bg-felt-500 text-white font-semibold text-sm flex items-center gap-2 transition">
+                                <i class="fa-solid fa-play"></i> Start round
+                            </button>
+                            <button onclick="resetRoundTimer()" class="disp-icon-btn" title="Reset timer">
+                                <i class="fa-solid fa-rotate-left"></i>
+                            </button>
+                            <button onclick="testChime()" class="disp-icon-btn" title="Test the sound">
+                                <i class="fa-solid fa-volume-high"></i>
+                            </button>
+                            <button onclick="closeDisplayMode()" class="disp-icon-btn" title="Close">
+                                <i class="fa-solid fa-xmark"></i>
+                            </button>
+                        </div>
+                    </div>
+                </div>
             </div>
 
-            <div id="displayPods" class="grid gap-5 sm:gap-6" style="grid-template-columns: repeat(auto-fit, minmax(280px, 1fr));">
+            <div id="dispBanner"></div>
+
+            <div id="displayPods" class="grid gap-5 sm:gap-6" style="grid-template-columns: repeat(auto-fit, minmax(270px, 1fr));">
                 <!-- Pods render here -->
             </div>
 
@@ -539,7 +631,9 @@
         // Initial Load
         window.onload = function() {
             loadSavedState();
+            loadTimer();
             renderAll();
+            requestWakeLock();
         };
 
         // ---------- State, persistence, export / import ----------
@@ -744,6 +838,7 @@
         function confirmResetAllData() {
             localStorage.removeItem(STORAGE_KEY);
             applyState(emptyState());
+            resetRoundTimer(false);
             closeResetDataModal();
             saveState();
             renderAll();
@@ -810,6 +905,7 @@
 
         function updateRoundMinutes(value) {
             eventSettings.roundMinutes = clampInt(value, 5, 240, eventSettings.roundMinutes);
+            if (!timer.endsAt && timer.remaining === timer.total) resetRoundTimer(false);
             saveState();
             renderAll();
         }
@@ -974,26 +1070,281 @@
             if (isDisplayOpen()) renderDisplay();
         }
 
+        // ---------- Keep the screen awake ----------
+
+        // Holds a screen wake lock whenever the page is visible, so a displayed iPad doesn't dim or lock.
+        // Supported in Safari 16.4+ and current Chrome; quietly does nothing elsewhere.
+        let wakeLock = null;
+
+        async function requestWakeLock() {
+            if (wakeLock || document.visibilityState !== 'visible' || !('wakeLock' in navigator)) return;
+            try {
+                wakeLock = await navigator.wakeLock.request('screen');
+                if (wakeLock && wakeLock.addEventListener) wakeLock.addEventListener('release', () => { wakeLock = null; });
+            } catch (err) {
+                wakeLock = null;
+            }
+        }
+
+        // The browser drops the lock when the tab is hidden; take it back on return
+        document.addEventListener('visibilitychange', () => {
+            if (document.visibilityState === 'visible') requestWakeLock();
+        });
+
+        // Any tap also unlocks audio for the chimes (iPad Safari needs a tap before it plays sound)
+        document.addEventListener('pointerdown', () => {
+            requestWakeLock();
+            unlockAudio();
+        });
+
+        // ---------- Chimes ----------
+
+        let audioCtx = null;
+
+        function unlockAudio() {
+            try {
+                const AC = window.AudioContext || window.webkitAudioContext;
+                if (!AC) return;
+                if (!audioCtx) audioCtx = new AC();
+                // Play through the iPad's silent switch where Safari allows it
+                if (navigator.audioSession) navigator.audioSession.type = 'playback';
+                if (audioCtx.state !== 'running') audioCtx.resume().catch(() => {});
+            } catch (err) {
+                audioCtx = null;
+            }
+        }
+
+        // One soft bell tone: a sine with a couple of quiet overtones and a long fade
+        function bell(freq, when, duration) {
+            [[1, 0.32], [2.01, 0.08], [3, 0.035]].forEach(([mult, volume]) => {
+                const osc = audioCtx.createOscillator();
+                const gain = audioCtx.createGain();
+                osc.type = 'sine';
+                osc.frequency.value = freq * mult;
+                gain.gain.setValueAtTime(0.0001, when);
+                gain.gain.exponentialRampToValueAtTime(volume, when + 0.015);
+                gain.gain.exponentialRampToValueAtTime(0.0001, when + duration);
+                osc.connect(gain);
+                gain.connect(audioCtx.destination);
+                osc.start(when);
+                osc.stop(when + duration + 0.05);
+            });
+        }
+
+        // Halfway: two rising notes. End: a falling three-note phrase, played twice.
+        function playChime(kind) {
+            unlockAudio();
+            if (!audioCtx) return;
+            const notes = kind === 'end'
+                ? [[880, 0], [698.46, 0.35], [587.33, 0.7], [880, 1.9], [698.46, 2.25], [587.33, 2.6]]
+                : [[587.33, 0], [880, 0.32]];
+            const start = audioCtx.currentTime + 0.05;
+            notes.forEach(([freq, at]) => bell(freq, start + at, kind === 'end' ? 1.8 : 1.5));
+        }
+
+        function testChime() {
+            playChime('half');
+        }
+
+        // ---------- Round timer ----------
+
+        // Kept in its own storage key so a reload mid-round picks up where it was. Not part of exports.
+        const TIMER_KEY = 'mtg_commander_party_timer_v1';
+        let timer = { total: 0, remaining: 0, endsAt: null, halfFired: false, endFired: false };
+        let timerTick = null;
+        let halfBannerUntil = 0;
+        let lastBannerKey = null;
+
+        function timerLeft() {
+            if (!timer.endsAt) return timer.remaining;
+            return Math.max(0, Math.ceil((timer.endsAt - Date.now()) / 1000));
+        }
+
+        function saveTimer() {
+            try {
+                localStorage.setItem(TIMER_KEY, JSON.stringify(timer));
+            } catch (err) { /* storage unavailable; timer still works for this visit */ }
+        }
+
+        function loadTimer() {
+            let saved = null;
+            try {
+                saved = JSON.parse(localStorage.getItem(TIMER_KEY) || 'null');
+            } catch (err) {
+                saved = null;
+            }
+            if (!saved || !Number.isFinite(saved.total) || saved.total <= 0) {
+                resetRoundTimer(false);
+                return;
+            }
+            timer = {
+                total: saved.total,
+                remaining: Number.isFinite(saved.remaining) ? saved.remaining : saved.total,
+                endsAt: Number.isFinite(saved.endsAt) ? saved.endsAt : null,
+                halfFired: !!saved.halfFired,
+                endFired: !!saved.endFired
+            };
+            if (timer.endsAt && timerLeft() <= 0) {
+                // The round ended while the page was closed: show it as over, without replaying chimes
+                timer.endsAt = null;
+                timer.remaining = 0;
+                timer.halfFired = true;
+                timer.endFired = true;
+                saveTimer();
+            }
+            if (timer.endsAt) startTicking();
+        }
+
+        function resetRoundTimer(render = true) {
+            stopTicking();
+            const total = eventSettings.roundMinutes * 60;
+            timer = { total, remaining: total, endsAt: null, halfFired: false, endFired: false };
+            halfBannerUntil = 0;
+            saveTimer();
+            if (render) renderTimerUI();
+        }
+
+        function toggleRoundTimer() {
+            unlockAudio();
+            if (timer.endsAt) {
+                timer.remaining = timerLeft();
+                timer.endsAt = null;
+                stopTicking();
+            } else {
+                if (timer.endFired || timer.remaining <= 0) resetRoundTimer(false);
+                timer.endsAt = Date.now() + timer.remaining * 1000;
+                startTicking();
+            }
+            saveTimer();
+            renderTimerUI();
+        }
+
+        function startTicking() {
+            stopTicking();
+            timerTick = setInterval(onTimerTick, 250);
+        }
+
+        function stopTicking() {
+            if (timerTick) clearInterval(timerTick);
+            timerTick = null;
+        }
+
+        function onTimerTick() {
+            const left = timerLeft();
+            if (!timer.halfFired && left <= timer.total / 2) {
+                timer.halfFired = true;
+                halfBannerUntil = Date.now() + 15000;
+                saveTimer();
+                playChime('half');
+            }
+            if (left <= 0) {
+                timer.endsAt = null;
+                timer.remaining = 0;
+                stopTicking();
+                if (!timer.endFired) {
+                    timer.endFired = true;
+                    playChime('end');
+                }
+                saveTimer();
+            }
+            renderTimerUI();
+        }
+
+        function formatClock(date) {
+            return date.toLocaleTimeString([], { hour: 'numeric', minute: '2-digit' });
+        }
+
+        function renderTimerUI() {
+            const digits = document.getElementById('dispTimerDigits');
+            if (!digits) return;
+            const ring = document.getElementById('dispTimerRing');
+            const status = document.getElementById('dispTimerStatus');
+            const toggle = document.getElementById('dispTimerToggle');
+
+            const left = timerLeft();
+            const running = !!timer.endsAt;
+            const done = timer.endFired && left <= 0;
+            const started = running || left < timer.total;
+            const pastHalf = left <= timer.total / 2;
+
+            const pad = n => String(n).padStart(2, '0');
+            digits.innerText = `${pad(Math.floor(left / 60))}:${pad(left % 60)}`;
+            digits.className = `text-2xl sm:text-3xl font-semibold tabular-nums ${done ? 'text-rose-300' : started && !running ? 'text-stone-400' : 'text-stone-50'}`;
+
+            const circumference = 326.73;
+            // A finished round shows a full red ring rather than an empty one
+            const fraction = done ? 1 : timer.total > 0 ? left / timer.total : 1;
+            ring.setAttribute('stroke-dashoffset', String(circumference * (1 - fraction)));
+            ring.setAttribute('stroke', done ? '#e0614a' : pastHalf ? '#d9a441' : '#5aa48b');
+
+            if (done) status.innerText = "Time's up";
+            else if (running) status.innerText = `Ends at ${formatClock(new Date(timer.endsAt))}${pastHalf ? '' : ' · chime at halfway'}`;
+            else if (started) status.innerText = 'Paused';
+            else status.innerText = `${Math.round(timer.total / 60)} minute round`;
+
+            toggle.innerHTML = running
+                ? '<i class="fa-solid fa-pause"></i> Pause'
+                : done
+                    ? '<i class="fa-solid fa-rotate-right"></i> Start again'
+                    : started
+                        ? '<i class="fa-solid fa-play"></i> Resume'
+                        : '<i class="fa-solid fa-play"></i> Start round';
+
+            // Banner: only rewrite it when its state changes, so the fade-in doesn't replay every tick
+            const bannerKey = done ? 'end' : (Date.now() < halfBannerUntil ? 'half' : 'none');
+            if (bannerKey !== lastBannerKey) {
+                lastBannerKey = bannerKey;
+                const banner = document.getElementById('dispBanner');
+                if (bannerKey === 'end') {
+                    banner.innerHTML = `
+                        <div class="disp-in soft-pulse rounded-2xl border border-rose-500/40 bg-rose-500/10 px-5 py-4 text-rose-200 text-xl sm:text-2xl font-semibold flex items-center gap-3">
+                            <i class="fa-solid fa-bell"></i> Time's up! Finish the current turn.
+                        </div>`;
+                } else if (bannerKey === 'half') {
+                    banner.innerHTML = `
+                        <div class="disp-in rounded-2xl border border-amber-500/40 bg-amber-500/10 px-5 py-4 text-amber-200 text-xl sm:text-2xl font-semibold flex items-center gap-3">
+                            <i class="fa-solid fa-hourglass-half"></i> Halfway through the round
+                        </div>`;
+                } else {
+                    banner.innerHTML = '';
+                }
+                fitDisplay();
+            }
+        }
+
         // ---------- Show Seating (full-screen view for the room) ----------
 
-        let wakeLock = null;
+        let clockInterval = null;
 
         function isDisplayOpen() {
             const el = document.getElementById('displayMode');
             return !!el && !el.classList.contains('hidden');
         }
 
+        function updateClock() {
+            const el = document.getElementById('dispClock');
+            if (el) el.innerText = formatClock(new Date());
+            // Keeps the halfway banner's 15-second window honest even when the timer is paused
+            renderTimerUI();
+        }
+
         function openDisplayMode() {
             document.getElementById('displayMode').classList.remove('hidden');
             document.body.style.overflow = 'hidden';
-            renderDisplay();
+            unlockAudio();
             requestWakeLock();
+            lastBannerKey = null;
+            renderDisplay();
+            updateClock();
+            if (clockInterval) clearInterval(clockInterval);
+            clockInterval = setInterval(updateClock, 1000);
         }
 
         function closeDisplayMode() {
             document.getElementById('displayMode').classList.add('hidden');
             document.body.style.overflow = '';
-            releaseWakeLock();
+            if (clockInterval) clearInterval(clockInterval);
+            clockInterval = null;
         }
 
         function displayRoundStep(delta) {
@@ -1004,8 +1355,10 @@
 
         function renderDisplay() {
             document.getElementById('displayTitle').innerText = `Round ${currentRound + 1}`;
+            document.getElementById('displayOf').innerText = rounds.length > 1 ? `of ${rounds.length}` : '';
             document.getElementById('displayPrev').disabled = currentRound === 0;
             document.getElementById('displayNext').disabled = currentRound >= rounds.length - 1;
+            renderTimerUI();
 
             const podsEl = document.getElementById('displayPods');
             const unseatedEl = document.getElementById('displayUnseated');
@@ -1013,29 +1366,34 @@
 
             if (seated.length === 0) {
                 podsEl.innerHTML = `
-                    <div class="col-span-full py-24 text-center text-stone-400">
-                        <i class="fa-solid fa-hat-wizard text-5xl text-stone-600 mb-4"></i>
-                        <p class="text-2xl">Round ${currentRound + 1} hasn't been drawn yet.</p>
+                    <div class="disp-in col-span-full py-24 text-center text-stone-400">
+                        <i class="fa-solid fa-hat-wizard text-5xl text-stone-600 mb-5"></i>
+                        <p class="font-display text-3xl text-stone-300">Round ${currentRound + 1} hasn't been drawn yet</p>
+                        <p class="mt-2 text-lg text-stone-500">Seats will appear here once the hat draw is done.</p>
                     </div>
                 `;
                 unseatedEl.innerHTML = '';
+                fitDisplay();
                 return;
             }
 
             podsEl.innerHTML = tables
-                .map(table => ({ table, seatedHere: seated.filter(p => p.tableId === table.id).sort((a, b) => a.seatIndex - b.seatIndex) }))
+                .map((table, index) => ({ table, index, seatedHere: seated.filter(p => p.tableId === table.id).sort((a, b) => a.seatIndex - b.seatIndex) }))
                 .filter(({ seatedHere }) => seatedHere.length > 0)
-                .map(({ table, seatedHere }) => `
-                    <div class="bg-mtg-card border border-mtg-border rounded-2xl p-5 sm:p-6">
-                        <div class="flex items-baseline justify-between gap-3 pb-3 mb-4 border-b border-mtg-border">
-                            <h3 class="text-2xl font-bold text-felt-300 break-words">${escapeHtml(table.name)}</h3>
-                            <span class="text-sm text-stone-500 shrink-0">${seatedHere.length} players</span>
+                .map(({ table, index, seatedHere }, order) => `
+                    <div class="disp-card disp-in p-5 sm:p-6" style="animation-delay: ${order * 70}ms;">
+                        <div class="flex items-start justify-between gap-3 mb-4">
+                            <div class="min-w-0">
+                                <div class="text-[11px] font-semibold uppercase tracking-[0.2em] text-stone-500">Table ${index + 1}</div>
+                                <h3 class="font-display text-2xl sm:text-[1.7rem] font-semibold text-felt-300 leading-tight break-words">${escapeHtml(table.name)}</h3>
+                            </div>
+                            <span class="shrink-0 mt-1 text-xs text-stone-400 px-2.5 py-1 rounded-full border border-stone-700">${seatedHere.length} players</span>
                         </div>
-                        <ol class="space-y-3">
+                        <ol class="space-y-2.5">
                             ${seatedHere.map(p => `
-                                <li class="flex items-baseline gap-3">
-                                    <span class="text-base text-stone-500 tabular-nums w-5 shrink-0">${p.seatIndex + 1}</span>
-                                    <span class="text-2xl sm:text-3xl font-semibold text-white break-words min-w-0">${escapeHtml(p.name)}</span>
+                                <li class="flex items-center gap-3 rounded-xl bg-black/20 px-3 py-2.5">
+                                    <span class="w-7 h-7 rounded-full bg-stone-800 text-stone-400 text-sm font-semibold flex items-center justify-center shrink-0 tabular-nums">${p.seatIndex + 1}</span>
+                                    <span class="${nameSizeClass(p.name)} font-semibold text-stone-50 leading-tight break-words min-w-0">${escapeHtml(p.name)}</span>
                                 </li>
                             `).join('')}
                         </ol>
@@ -1044,30 +1402,36 @@
 
             const unseated = players.filter(p => p.tableId === null);
             unseatedEl.innerHTML = unseated.length === 0 ? '' : `
-                <div class="text-stone-400 text-xl">
+                <div class="disp-in rounded-2xl border border-stone-700/70 px-5 py-4 text-stone-300 text-xl">
                     <span class="font-semibold text-amber-300">Not seated yet:</span>
                     ${unseated.map(p => escapeHtml(p.name)).join(', ')}
                 </div>
             `;
+            fitDisplay();
         }
 
-        // Stops the screen dimming while seating is on display (supported in current Safari and Chrome)
-        async function requestWakeLock() {
-            try {
-                if ('wakeLock' in navigator) wakeLock = await navigator.wakeLock.request('screen');
-            } catch (err) {
-                wakeLock = null;
+        // Names with a long single word drop a size so the word stays whole in a narrow card
+        function nameSizeClass(name) {
+            const longestWord = Math.max(...String(name).split(/\s+/).map(w => w.length));
+            return longestWord > 9 ? 'text-xl sm:text-2xl' : 'text-2xl sm:text-3xl';
+        }
+
+        // Scales the pods down in small steps until the whole view fits the screen without scrolling,
+        // so a landscape iPad shows every table at once even on a big night
+        function fitDisplay() {
+            const stage = document.getElementById('displayMode');
+            const pods = document.getElementById('displayPods');
+            if (!stage || !pods || !isDisplayOpen()) return;
+            let zoom = 1;
+            pods.style.zoom = '1';
+            while (stage.scrollHeight > stage.clientHeight + 1 && zoom > 0.55) {
+                zoom = Math.round((zoom - 0.05) * 100) / 100;
+                pods.style.zoom = String(zoom);
             }
         }
 
-        function releaseWakeLock() {
-            if (wakeLock) wakeLock.release().catch(() => {});
-            wakeLock = null;
-        }
-
-        // The browser drops the wake lock when the tab is hidden; take it back on return
-        document.addEventListener('visibilitychange', () => {
-            if (document.visibilityState === 'visible' && isDisplayOpen()) requestWakeLock();
+        window.addEventListener('resize', () => {
+            if (isDisplayOpen()) fitDisplay();
         });
 
         document.addEventListener('keydown', e => {
