@@ -1,0 +1,1593 @@
+<!DOCTYPE html>
+<html lang="en" class="dark">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Commander Party Seating & Pod Organizer</title>
+    <!-- Tailwind CSS -->
+    <script src="https://cdn.tailwindcss.com"></script>
+    <!-- FontAwesome Icons -->
+    <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.4.0/css/all.min.css">
+    <!-- Canvas Confetti for Hat Draw celebration -->
+    <script src="https://cdn.jsdelivr.net/npm/canvas-confetti@1.6.0/dist/confetti.browser.min.js"></script>
+    <script>
+        tailwind.config = {
+            darkMode: 'class',
+            theme: {
+                extend: {
+                    colors: {
+                        mtg: {
+                            bg: '#0d1117',
+                            card: '#161b22',
+                            border: '#30363d',
+                            accent: '#8b5cf6',
+                            gold: '#f59e0b',
+                            manaW: '#f8fafc',
+                            manaU: '#3b82f6',
+                            manaB: '#6b7280',
+                            manaR: '#ef4444',
+                            manaG: '#22c55e'
+                        }
+                    }
+                }
+            }
+        }
+    </script>
+    <style>
+        @import url('https://fonts.googleapis.com/css2?family=Inter:wght@300;400;500;600;700&display=swap');
+        body {
+            font-family: 'Inter', sans-serif;
+            background-color: #0b0f19;
+            color: #e2e8f0;
+        }
+
+        /* Custom Drag & Drop styles */
+        .seat.drag-over {
+            border-color: #8b5cf6 !important;
+            background-color: rgba(139, 92, 246, 0.2) !important;
+            transform: scale(1.05);
+        }
+
+        .player-card.dragging {
+            opacity: 0.5;
+            transform: scale(0.95);
+        }
+
+        /* Magic glowing effect for pods */
+        .pod-card {
+            box-shadow: 0 4px 20px -5px rgba(0, 0, 0, 0.5);
+            transition: all 0.3s cubic-bezier(0.4, 0, 0.2, 1);
+        }
+        .pod-card:hover {
+            box-shadow: 0 0 20px 2px rgba(139, 92, 246, 0.25);
+        }
+
+        /* Custom Scrollbar */
+        ::-webkit-scrollbar {
+            width: 6px;
+            height: 6px;
+        }
+        ::-webkit-scrollbar-track {
+            background: #0d1117;
+        }
+        ::-webkit-scrollbar-thumb {
+            background: #30363d;
+            border-radius: 4px;
+        }
+        ::-webkit-scrollbar-thumb:hover {
+            background: #8b5cf6;
+        }
+
+        @keyframes shuffleHat {
+            0% { transform: rotate(0deg) scale(1); }
+            25% { transform: rotate(-12deg) scale(1.1); }
+            50% { transform: rotate(12deg) scale(1.1); }
+            75% { transform: rotate(-8deg) scale(1.05); }
+            100% { transform: rotate(0deg) scale(1); }
+        }
+        .hat-anim {
+            animation: shuffleHat 0.6s ease-in-out infinite;
+        }
+    </style>
+</head>
+<body class="min-h-screen flex flex-col justify-between antialiased">
+
+    <!-- Header -->
+    <header class="bg-mtg-card/90 backdrop-blur border-b border-mtg-border sticky top-0 z-30 px-4 py-3 sm:px-8">
+        <div class="max-w-7xl mx-auto flex flex-col sm:flex-row items-center justify-between gap-4">
+            <div class="flex items-center gap-3">
+                <div class="w-10 h-10 rounded-xl bg-gradient-to-br from-amber-500 to-purple-600 flex items-center justify-center text-white shadow-lg font-bold text-xl">
+                    <i class="fa-solid font-bold fa-dice-d20"></i>
+                </div>
+                <div>
+                    <h1 class="text-xl font-bold tracking-tight text-white flex items-center gap-2">
+                        MTG Commander Pod & Seating Organizer
+                    </h1>
+                    <p class="text-xs text-slate-400">Manage players, potluck dishes & seat every round's pods</p>
+                </div>
+            </div>
+
+            <div class="flex items-center gap-2 sm:gap-3 flex-wrap justify-center">
+                <!-- Autosave indicator badge -->
+                <div id="saveStatus" class="hidden sm:flex items-center gap-1.5 px-3 py-1.5 rounded-lg bg-slate-900 border border-slate-800 text-xs text-slate-400 font-medium transition-all duration-300">
+                    <i id="saveStatusIcon" class="fa-solid fa-cloud text-slate-500"></i>
+                    <span id="saveStatusText">Saved</span>
+                </div>
+                <button id="hatDrawBtn" onclick="openHatDrawModal()" class="px-4 py-2 bg-gradient-to-r from-purple-600 to-indigo-600 hover:from-purple-500 hover:to-indigo-500 text-white font-medium text-sm rounded-lg shadow-lg shadow-purple-900/40 flex items-center gap-2 transition active:scale-95">
+                    <i class="fa-solid fa-hat-wizard text-amber-300"></i> Hat Draw (Randomize)
+                </button>
+                <button onclick="addTable()" class="px-3.5 py-2 bg-slate-800 hover:bg-slate-700 text-slate-200 border border-slate-700 font-medium text-sm rounded-lg flex items-center gap-2 transition active:scale-95">
+                    <i class="fa-solid fa-plus text-purple-400"></i> Add Table
+                </button>
+                <button onclick="clearSeating()" class="px-3.5 py-2 bg-slate-800 hover:bg-slate-700 text-slate-300 border border-slate-700 font-medium text-sm rounded-lg flex items-center gap-2 transition" title="Unseat everyone in the current round without deleting the roster">
+                    <i class="fa-solid fa-arrow-rotate-left"></i> Reset Seats
+                </button>
+                <button onclick="exportData()" class="px-3.5 py-2 bg-slate-800 hover:bg-slate-700 text-slate-300 border border-slate-700 font-medium text-sm rounded-lg flex items-center gap-2 transition" title="Download the whole event as a file">
+                    <i class="fa-solid fa-file-export text-emerald-400"></i> Export
+                </button>
+                <button onclick="triggerImport()" class="px-3.5 py-2 bg-slate-800 hover:bg-slate-700 text-slate-300 border border-slate-700 font-medium text-sm rounded-lg flex items-center gap-2 transition" title="Load an event from an exported file">
+                    <i class="fa-solid fa-file-import text-sky-400"></i> Import
+                </button>
+                <input type="file" id="importFile" accept=".json,application/json" class="hidden" onchange="handleImportFile(event)">
+                <button onclick="openResetDataModal()" class="px-3.5 py-2 bg-slate-800 hover:bg-red-950/50 hover:text-red-300 text-slate-400 border border-slate-700 font-medium text-sm rounded-lg flex items-center gap-2 transition" title="Start fresh event with default state">
+                    <i class="fa-solid fa-trash-arrow-up"></i> Clear All Data
+                </button>
+            </div>
+        </div>
+    </header>
+
+    <!-- Main Container -->
+    <main class="max-w-7xl w-full mx-auto p-4 sm:p-6 lg:p-8 flex-1 grid grid-cols-1 lg:grid-cols-12 gap-6">
+
+        <!-- Left Sidebar: Player & Potluck Management -->
+        <section class="lg:col-span-4 flex flex-col gap-6">
+            
+            <!-- Add Player Form -->
+            <div class="bg-mtg-card border border-mtg-border rounded-xl p-5 shadow-sm">
+                <h2 class="text-base font-semibold text-white mb-4 flex items-center gap-2">
+                    <i class="fa-solid fa-user-plus text-purple-400"></i> Add New Player
+                </h2>
+                <form id="addPlayerForm" onsubmit="handleAddPlayer(event)" class="space-y-4">
+                    <div>
+                        <label class="block text-xs font-medium text-slate-400 mb-1">Player Name</label>
+                        <input type="text" id="playerName" required placeholder="e.g., Chandra Nalaar" 
+                            class="w-full bg-slate-900/90 border border-slate-700 rounded-lg px-3 py-2 text-sm text-white placeholder-slate-500 focus:outline-none focus:border-purple-500 focus:ring-1 focus:ring-purple-500">
+                    </div>
+
+                    <div class="grid grid-cols-2 gap-3">
+                        <div>
+                            <label class="block text-xs font-medium text-slate-400 mb-1">Player Experience</label>
+                            <select id="playerExperience" class="w-full bg-slate-900/90 border border-slate-700 rounded-lg px-3 py-2 text-sm text-white focus:outline-none focus:border-purple-500">
+                                <option value="New">New (first games)</option>
+                                <option value="Learning" selected>Learning (knows the basics)</option>
+                                <option value="Experienced">Experienced (regular player)</option>
+                                <option value="Veteran">Veteran (can teach others)</option>
+                            </select>
+                        </div>
+                        <div>
+                            <label class="block text-xs font-medium text-slate-400 mb-1">Potluck Dish</label>
+                            <input type="text" id="playerDish" placeholder="e.g., Guacamole & Chips" 
+                                class="w-full bg-slate-900/90 border border-slate-700 rounded-lg px-3 py-2 text-sm text-white placeholder-slate-500 focus:outline-none focus:border-purple-500">
+                        </div>
+                    </div>
+
+                    <button type="submit" class="w-full py-2.5 bg-purple-600 hover:bg-purple-500 text-white font-medium text-sm rounded-lg shadow-md transition active:scale-98 flex items-center justify-center gap-2">
+                        <i class="fa-solid fa-plus"></i> Add to Roster
+                    </button>
+                </form>
+            </div>
+
+            <!-- Player Roster & Potluck Tracker -->
+            <div class="bg-mtg-card border border-mtg-border rounded-xl p-5 shadow-sm flex-1 flex flex-col min-h-[380px]">
+                <div class="flex items-center justify-between mb-3">
+                    <h2 class="text-base font-semibold text-white flex items-center gap-2">
+                        <i class="fa-solid fa-users text-amber-400"></i> Unassigned Roster 
+                        <span id="unassignedCount" class="bg-purple-950 text-purple-300 border border-purple-800 text-xs px-2 py-0.5 rounded-full font-semibold">0</span>
+                    </h2>
+                    <span class="text-xs text-slate-400">Drag or click to assign</span>
+                </div>
+
+                <!-- Unassigned Players List -->
+                <div id="unassignedList" class="flex-1 space-y-2.5 overflow-y-auto max-h-[320px] pr-1">
+                    <!-- Dynamic rendering -->
+                </div>
+
+                <!-- Quick Potluck Summary Collapsible -->
+                <div class="mt-4 pt-3 border-t border-mtg-border">
+                    <details class="group">
+                        <summary class="flex justify-between items-center font-medium text-xs text-slate-300 cursor-pointer list-none select-none">
+                            <span class="flex items-center gap-2">
+                                <i class="fa-solid fa-utensils text-amber-400"></i> Potluck Contributions Summary (<span id="totalDishCount">0</span>)
+                            </span>
+                            <span class="transition group-open:rotate-180">
+                                <i class="fa-solid fa-chevron-down text-slate-500"></i>
+                            </span>
+                        </summary>
+                        <div id="potluckList" class="mt-3 text-xs text-slate-400 space-y-1.5 max-h-36 overflow-y-auto pr-1">
+                            <!-- Dynamic food items -->
+                        </div>
+                    </details>
+                </div>
+            </div>
+
+        </section>
+
+        <!-- Right Main: Interactive Seating / Tables Area -->
+        <section class="lg:col-span-8 flex flex-col gap-6">
+            
+            <!-- Controls Bar for View/Filters -->
+            <div class="bg-mtg-card border border-mtg-border rounded-xl p-4 flex flex-wrap items-center justify-between gap-4">
+                <div class="flex items-center gap-2">
+                    <span class="text-xs font-semibold text-slate-400 uppercase tracking-wider">Party Stats:</span>
+                    <span id="statsTotal" class="text-xs bg-slate-800 px-2.5 py-1 rounded-md text-slate-300 border border-slate-700">Players: 0</span>
+                    <span id="statsSeated" class="text-xs bg-emerald-950 text-emerald-300 border border-emerald-800 px-2.5 py-1 rounded-md">Seated: 0</span>
+                    <span id="statsTables" class="text-xs bg-slate-800 px-2.5 py-1 rounded-md text-slate-300 border border-slate-700">Tables: 0</span>
+                </div>
+
+                <div class="text-xs text-slate-400 flex items-center gap-1.5">
+                    <i class="fa-solid fa-circle-info text-purple-400"></i> Drag players to seats or click an open seat to assign
+                </div>
+            </div>
+
+            <!-- Rounds: settings, tabs and timer -->
+            <div class="bg-mtg-card border border-mtg-border rounded-xl p-4 flex flex-col gap-4">
+                <div class="flex flex-wrap items-end justify-between gap-4">
+                    <div class="flex flex-wrap items-end gap-3">
+                        <div>
+                            <label for="roundCountInput" class="block text-xs font-medium text-slate-400 mb-1">Rounds</label>
+                            <input type="number" id="roundCountInput" min="1" max="10" onchange="updateRoundCount(this.value)"
+                                class="w-20 bg-slate-900/90 border border-slate-700 rounded-lg px-3 py-1.5 text-sm text-white focus:outline-none focus:border-purple-500">
+                        </div>
+                        <div>
+                            <label for="roundMinutesInput" class="block text-xs font-medium text-slate-400 mb-1">Minutes per round</label>
+                            <input type="number" id="roundMinutesInput" min="5" max="240" step="5" onchange="updateRoundMinutes(this.value)"
+                                class="w-24 bg-slate-900/90 border border-slate-700 rounded-lg px-3 py-1.5 text-sm text-white focus:outline-none focus:border-purple-500">
+                        </div>
+                        <span id="eventLength" class="text-xs text-slate-500 pb-2"></span>
+                    </div>
+
+                    <!-- Round timer -->
+                    <div class="flex items-center gap-2">
+                        <span id="timerDisplay" class="font-mono text-2xl font-bold text-white tabular-nums">00:00</span>
+                        <button id="timerToggleBtn" onclick="toggleTimer()" class="px-3 py-1.5 bg-purple-600 hover:bg-purple-500 text-white text-xs font-semibold rounded-lg flex items-center gap-1.5 transition">
+                            <i class="fa-solid fa-play"></i> Start
+                        </button>
+                        <button onclick="resetTimer()" class="px-2.5 py-1.5 bg-slate-800 hover:bg-slate-700 text-slate-300 border border-slate-700 text-xs rounded-lg transition" title="Reset timer">
+                            <i class="fa-solid fa-rotate-left"></i>
+                        </button>
+                    </div>
+                </div>
+
+                <div id="roundTabs" class="flex flex-wrap gap-2">
+                    <!-- Round tabs render here -->
+                </div>
+            </div>
+
+            <!-- Seating suggestions -->
+            <div id="issuesPanel" class="hidden"></div>
+
+            <!-- Tables Grid Container -->
+            <div id="tablesGrid" class="grid grid-cols-1 md:grid-cols-2 gap-6">
+                <!-- Dynamic Tables will render here -->
+            </div>
+
+        </section>
+
+    </main>
+
+    <!-- Hat Draw / Pod Scrambler Modal -->
+    <div id="hatModal" class="fixed inset-0 bg-black/80 backdrop-blur-sm z-50 flex items-center justify-center hidden p-4">
+        <div class="bg-mtg-card border border-mtg-border rounded-2xl max-w-md w-full max-h-[90vh] overflow-y-auto p-6 shadow-2xl relative">
+            <button onclick="closeHatDrawModal()" class="absolute top-4 right-4 text-slate-400 hover:text-white">
+                <i class="fa-solid fa-xmark text-lg"></i>
+            </button>
+
+            <div class="text-center mb-6">
+                <div class="w-16 h-16 bg-purple-950/80 border border-purple-500/50 rounded-2xl flex items-center justify-center mx-auto mb-3 shadow-lg shadow-purple-900/30">
+                    <i id="hatIcon" class="fa-solid fa-hat-wizard text-3xl text-amber-400"></i>
+                </div>
+                <h3 id="hatTitle" class="text-xl font-bold text-white">Round 1 Pod Scrambler</h3>
+                <p class="text-xs text-slate-400 mt-1">Draw names from the hat to form fresh player pods, or seat them by experience.</p>
+            </div>
+
+            <div class="space-y-4 mb-6">
+                <div class="bg-slate-900/80 p-3.5 rounded-xl border border-slate-800">
+                    <label class="block text-xs font-semibold text-slate-300 mb-2">Seating Strategy</label>
+                    <div class="space-y-2">
+                        <label class="flex items-center gap-2.5 text-xs text-slate-300 cursor-pointer">
+                            <input type="radio" name="hatStrategy" value="pure" checked class="text-purple-600 focus:ring-purple-500">
+                            <div>
+                                <span class="font-medium text-white">Pure Random Draw</span>
+                                <p class="text-[11px] text-slate-500">Complete shuffle of all players across all available seats.</p>
+                            </div>
+                        </label>
+                        <label class="flex items-center gap-2.5 text-xs text-slate-300 cursor-pointer">
+                            <input type="radio" name="hatStrategy" value="skill" class="text-purple-600 focus:ring-purple-500">
+                            <div>
+                                <span class="font-medium text-white">Organize by Skill</span>
+                                <p class="text-[11px] text-slate-500">Seats players of similar experience together: veterans with veterans, new players with new players.</p>
+                            </div>
+                        </label>
+                        <label class="flex items-center gap-2.5 text-xs text-slate-300 cursor-pointer">
+                            <input type="radio" name="hatStrategy" value="mixed" class="text-purple-600 focus:ring-purple-500">
+                            <div>
+                                <span class="font-medium text-white">Experienced with New Players</span>
+                                <p class="text-[11px] text-slate-500">Spreads veterans across every pod so each table has someone who can help newer players.</p>
+                            </div>
+                        </label>
+                    </div>
+                </div>
+
+                <div id="hatIssues"></div>
+
+                <div class="text-xs text-slate-400 bg-amber-950/30 border border-amber-800/40 p-3 rounded-lg flex items-start gap-2">
+                    <i class="fa-solid fa-triangle-exclamation text-amber-400 mt-0.5"></i>
+                    <span id="hatWarning">This will clear this round's seat assignments and re-assign all players across the current tables. Locked pairs always sit together.</span>
+                </div>
+            </div>
+
+            <div class="flex gap-3">
+                <button onclick="closeHatDrawModal()" class="flex-1 py-2.5 bg-slate-800 hover:bg-slate-700 text-slate-300 font-medium text-sm rounded-lg transition">
+                    Cancel
+                </button>
+                <button onclick="executeHatDraw()" class="flex-1 py-2.5 bg-gradient-to-r from-purple-600 to-indigo-600 hover:from-purple-500 hover:to-indigo-500 text-white font-semibold text-sm rounded-lg shadow-lg shadow-purple-900/40 transition flex items-center justify-center gap-2">
+                    <i class="fa-solid fa-shuffle"></i> Draw & Shuffle!
+                </button>
+            </div>
+        </div>
+    </div>
+
+    <!-- Quick Player Assign Dialog Modal -->
+    <div id="assignModal" class="fixed inset-0 bg-black/80 backdrop-blur-sm z-50 flex items-center justify-center hidden p-4">
+        <div class="bg-mtg-card border border-mtg-border rounded-xl max-w-sm w-full p-5 shadow-xl relative">
+            <button onclick="closeAssignModal()" class="absolute top-3 right-3 text-slate-400 hover:text-white">
+                <i class="fa-solid fa-xmark"></i>
+            </button>
+            <h3 class="text-base font-semibold text-white mb-1">Select Player for Seat</h3>
+            <p id="assignModalSub" class="text-xs text-slate-400 mb-4">Table X, Seat Y</p>
+
+            <div id="assignPlayerOptions" class="space-y-2 max-h-60 overflow-y-auto pr-1">
+                <!-- List of unassigned players -->
+            </div>
+        </div>
+    </div>
+
+    <!-- Edit Player Modal -->
+    <div id="editPlayerModal" class="fixed inset-0 bg-black/80 backdrop-blur-sm z-50 flex items-center justify-center hidden p-4">
+        <div class="bg-mtg-card border border-mtg-border rounded-xl max-w-sm w-full p-5 shadow-xl relative">
+            <button onclick="closeEditPlayerModal()" class="absolute top-3 right-3 text-slate-400 hover:text-white">
+                <i class="fa-solid fa-xmark"></i>
+            </button>
+            <h3 class="text-base font-semibold text-white mb-4 flex items-center gap-2">
+                <i class="fa-solid fa-user-pen text-purple-400"></i> Edit Player
+            </h3>
+            <form onsubmit="saveEditPlayer(event)" class="space-y-4">
+                <div>
+                    <label class="block text-xs font-medium text-slate-400 mb-1">Player Name</label>
+                    <input type="text" id="editPlayerName" required
+                        class="w-full bg-slate-900/90 border border-slate-700 rounded-lg px-3 py-2 text-sm text-white focus:outline-none focus:border-purple-500 focus:ring-1 focus:ring-purple-500">
+                </div>
+                <div>
+                    <label class="block text-xs font-medium text-slate-400 mb-1">Player Experience</label>
+                    <select id="editPlayerExperience" class="w-full bg-slate-900/90 border border-slate-700 rounded-lg px-3 py-2 text-sm text-white focus:outline-none focus:border-purple-500">
+                        <option value="New">New (first games)</option>
+                        <option value="Learning">Learning (knows the basics)</option>
+                        <option value="Experienced">Experienced (regular player)</option>
+                        <option value="Veteran">Veteran (can teach others)</option>
+                    </select>
+                </div>
+                <div>
+                    <label class="block text-xs font-medium text-slate-400 mb-1">Potluck Dish</label>
+                    <input type="text" id="editPlayerDish" placeholder="e.g., Guacamole & Chips"
+                        class="w-full bg-slate-900/90 border border-slate-700 rounded-lg px-3 py-2 text-sm text-white placeholder-slate-500 focus:outline-none focus:border-purple-500">
+                </div>
+                <div>
+                    <label class="block text-xs font-medium text-slate-400 mb-1"><i class="fa-solid fa-link text-sky-400 mr-1"></i>Always seat with</label>
+                    <select id="editPlayerPartner" class="w-full bg-slate-900/90 border border-slate-700 rounded-lg px-3 py-2 text-sm text-white focus:outline-none focus:border-purple-500">
+                        <!-- Other players render here -->
+                    </select>
+                    <p class="text-[11px] text-slate-500 mt-1">The hat draw keeps locked pairs at the same table.</p>
+                </div>
+                <div class="flex gap-3 pt-1">
+                    <button type="button" onclick="closeEditPlayerModal()" class="flex-1 py-2.5 bg-slate-800 hover:bg-slate-700 text-slate-300 font-medium text-sm rounded-lg transition">
+                        Cancel
+                    </button>
+                    <button type="submit" class="flex-1 py-2.5 bg-purple-600 hover:bg-purple-500 text-white font-semibold text-sm rounded-lg shadow-md transition flex items-center justify-center gap-2">
+                        <i class="fa-solid fa-check"></i> Save
+                    </button>
+                </div>
+            </form>
+        </div>
+    </div>
+
+    <!-- Reset All Data Confirmation Modal -->
+    <div id="resetDataModal" class="fixed inset-0 bg-black/80 backdrop-blur-sm z-50 flex items-center justify-center hidden p-4">
+        <div class="bg-mtg-card border border-mtg-border rounded-2xl max-w-md w-full p-6 shadow-2xl relative">
+            <button onclick="closeResetDataModal()" class="absolute top-4 right-4 text-slate-400 hover:text-white">
+                <i class="fa-solid fa-xmark text-lg"></i>
+            </button>
+
+            <div class="text-center mb-5">
+                <div class="w-14 h-14 bg-rose-950/80 border border-rose-600/50 rounded-2xl flex items-center justify-center mx-auto mb-3 shadow-lg shadow-rose-950">
+                    <i class="fa-solid fa-triangle-exclamation text-2xl text-rose-400"></i>
+                </div>
+                <h3 class="text-xl font-bold text-white">Reset All Party Data?</h3>
+                <p class="text-xs text-slate-400 mt-1">This deletes every player, dish, table, round and seat assignment. You will start with an empty event. Export first if you want a backup.</p>
+            </div>
+
+            <div class="flex gap-3">
+                <button onclick="closeResetDataModal()" class="flex-1 py-2.5 bg-slate-800 hover:bg-slate-700 text-slate-300 font-medium text-sm rounded-lg transition">
+                    Cancel
+                </button>
+                <button onclick="confirmResetAllData()" class="flex-1 py-2.5 bg-rose-600 hover:bg-rose-500 text-white font-semibold text-sm rounded-lg shadow-lg shadow-rose-950 transition flex items-center justify-center gap-2">
+                    <i class="fa-solid fa-trash-can"></i> Yes, Clear All Data
+                </button>
+            </div>
+        </div>
+    </div>
+
+    <!-- Footer -->
+    <footer class="mt-8 border-t border-mtg-border/50 py-4 text-center text-xs text-slate-600">
+        Commander Party Pod Organizer &bull; Built for Magic: The Gathering Game Nights
+    </footer>
+
+    <!-- JavaScript Application Logic -->
+    <script>
+        const STORAGE_KEY = 'mtg_commander_party_organizer_v1';
+        const APP_ID = 'mtg-commander-pod-organizer';
+        const DATA_VERSION = 2;
+
+        const EXPERIENCE_ORDER = { 'New': 1, 'Learning': 2, 'Experienced': 3, 'Veteran': 4 };
+        const DEFAULT_EVENT = { roundCount: 2, roundMinutes: 60 };
+        const MIN_POD = 3;
+        const MAX_POD = 6;
+
+        // Demo roster shown the first time the page opens with nothing saved.
+        // Seats here become Round 1's seating.
+        const DEFAULT_PLAYERS = [
+            { id: '1', name: 'Alex M.', experience: 'Learning', dish: 'Guacamole & Tortilla Chips', tableId: 'tbl_1', seatIndex: 0 },
+            { id: '2', name: 'Jordan T.', experience: 'New', dish: 'Vegetarian Chili', tableId: 'tbl_1', seatIndex: 1 },
+            { id: '3', name: 'Sam K.', experience: 'Experienced', dish: 'Craft Beer & Sodas', tableId: 'tbl_1', seatIndex: 2 },
+            { id: '4', name: 'Taylor R.', experience: 'Veteran', dish: 'Brownies & Cookies', tableId: 'tbl_1', seatIndex: 3 },
+            { id: '5', name: 'Chris P.', experience: 'Learning', dish: 'Hummus & Pita Chips', tableId: 'tbl_2', seatIndex: 0 },
+            { id: '6', name: 'Morgan B.', experience: 'New', dish: 'Fruit Salad Platter', tableId: 'tbl_2', seatIndex: 1 },
+            { id: '7', name: 'Pat G.', experience: 'Experienced', dish: 'Host (Drinks Bar)', tableId: 'tbl_2', seatIndex: 2 },
+            { id: '8', name: 'Riley D.', experience: 'Learning', dish: 'Salsa & Wings', tableId: 'tbl_2', seatIndex: 3 }
+        ];
+
+        const DEFAULT_TABLES = [
+            { id: 'tbl_1', name: 'Pod 1 (Sol Ring)', capacity: 4 },
+            { id: 'tbl_2', name: 'Pod 2 (Command Tower)', capacity: 4 }
+        ];
+
+        // Active State
+        // Tables are shared by every round. Each round keeps its own seating in `rounds`
+        // ({ playerId: { tableId, seatIndex } }). The players' tableId / seatIndex fields
+        // hold the seating of the round currently on screen.
+        let players = [];
+        let tables = [];
+        let eventSettings = { ...DEFAULT_EVENT };
+        let rounds = [{}];
+        let currentRound = 0;
+        let saveTimeout = null;
+
+        let draggedPlayerId = null;
+        let selectedSeatTarget = null; // { tableId, seatIndex }
+
+        // Initial Load
+        window.onload = function() {
+            loadSavedState();
+            resetTimer();
+            renderAll();
+        };
+
+        // ---------- State, persistence, export / import ----------
+
+        function clampInt(value, min, max, fallback) {
+            const n = parseInt(value, 10);
+            if (!Number.isFinite(n)) return fallback;
+            return Math.min(max, Math.max(min, n));
+        }
+
+        // Earlier saves stored a deck power level; map it onto an experience level
+        function migratePlayer(p) {
+            if (p.experience) return p;
+            const powerToExperience = { 'Precon': 'New', 'Casual': 'Learning', 'Mid': 'Experienced', 'High/cEDH': 'Veteran' };
+            const { power, ...rest } = p;
+            return { ...rest, experience: powerToExperience[power] || 'Learning' };
+        }
+
+        // Turns saved or imported data into a clean state, or returns null if it isn't usable.
+        // Accepts this app's exports and older saves that kept seating on each player.
+        function normalizeState(parsed) {
+            if (!parsed || !Array.isArray(parsed.players) || !Array.isArray(parsed.tables)) return null;
+
+            const cleanTables = parsed.tables
+                .filter(t => t && t.id != null)
+                .map(t => ({ id: String(t.id), name: String(t.name ?? 'Pod'), capacity: clampInt(t.capacity, MIN_POD, MAX_POD, 4) }));
+
+            const cleanPlayers = parsed.players
+                .filter(p => p && p.id != null && p.name)
+                .map(migratePlayer)
+                .map(p => ({
+                    id: String(p.id),
+                    name: String(p.name),
+                    experience: EXPERIENCE_ORDER[p.experience] ? p.experience : 'Learning',
+                    dish: String(p.dish || ''),
+                    partnerId: p.partnerId != null ? String(p.partnerId) : null,
+                    tableId: null,
+                    seatIndex: null
+                }));
+
+            // Locked pairs must point at a real player and point back
+            const byId = new Map(cleanPlayers.map(p => [p.id, p]));
+            cleanPlayers.forEach(p => {
+                const partner = p.partnerId ? byId.get(p.partnerId) : null;
+                if (!partner || partner.id === p.id || partner.partnerId !== p.id) p.partnerId = null;
+            });
+
+            const ev = parsed.event || {};
+            const cleanEvent = {
+                roundCount: clampInt(ev.roundCount, 1, 10, DEFAULT_EVENT.roundCount),
+                roundMinutes: clampInt(ev.roundMinutes, 5, 240, DEFAULT_EVENT.roundMinutes)
+            };
+
+            let cleanRounds;
+            if (Array.isArray(parsed.rounds)) {
+                cleanRounds = parsed.rounds.map(r => (r && typeof r === 'object' && !Array.isArray(r)) ? r : {});
+            } else {
+                // Older save: seating lived on the players, so it becomes Round 1
+                const first = {};
+                parsed.players.forEach(p => {
+                    if (p && p.id != null && p.tableId != null) first[String(p.id)] = { tableId: String(p.tableId), seatIndex: p.seatIndex };
+                });
+                cleanRounds = [first];
+            }
+            while (cleanRounds.length < cleanEvent.roundCount) cleanRounds.push({});
+            cleanRounds = cleanRounds.slice(0, cleanEvent.roundCount);
+
+            return {
+                players: cleanPlayers,
+                tables: cleanTables,
+                event: cleanEvent,
+                rounds: cleanRounds,
+                currentRound: clampInt(parsed.currentRound, 0, cleanEvent.roundCount - 1, 0)
+            };
+        }
+
+        function applyState(state) {
+            players = state.players;
+            tables = state.tables;
+            eventSettings = state.event;
+            rounds = state.rounds;
+            currentRound = state.currentRound;
+            loadRound(currentRound);
+        }
+
+        function emptyState() {
+            return normalizeState({ players: [], tables: [] });
+        }
+
+        // Everything needed to rebuild the event; used for local saves and exports
+        function buildSnapshot() {
+            stashCurrentRound();
+            return {
+                app: APP_ID,
+                version: DATA_VERSION,
+                event: eventSettings,
+                tables: tables,
+                players: players.map(({ tableId, seatIndex, ...rest }) => rest),
+                rounds: rounds,
+                currentRound: currentRound
+            };
+        }
+
+        function saveState() {
+            try {
+                const snapshot = buildSnapshot();
+                snapshot.lastSaved = Date.now();
+                localStorage.setItem(STORAGE_KEY, JSON.stringify(snapshot));
+                triggerSaveNotification();
+            } catch (err) {
+                console.error("Failed to save state to localStorage", err);
+            }
+        }
+
+        function loadSavedState() {
+            try {
+                const raw = localStorage.getItem(STORAGE_KEY);
+                if (raw) {
+                    const state = normalizeState(JSON.parse(raw));
+                    if (state) {
+                        applyState(state);
+                        return;
+                    }
+                }
+            } catch (err) {
+                console.warn("Could not load state from localStorage, falling back to defaults.", err);
+            }
+
+            applyState(normalizeState({ players: DEFAULT_PLAYERS, tables: DEFAULT_TABLES }));
+            saveState();
+        }
+
+        function exportData() {
+            const data = buildSnapshot();
+            data.exportedAt = new Date().toISOString();
+            const blob = new Blob([JSON.stringify(data, null, 2)], { type: 'application/json' });
+            const url = URL.createObjectURL(blob);
+            const link = document.createElement('a');
+            link.href = url;
+            link.download = `commander-party-${new Date().toISOString().slice(0, 10)}.json`;
+            document.body.appendChild(link);
+            link.click();
+            link.remove();
+            setTimeout(() => URL.revokeObjectURL(url), 1000);
+        }
+
+        function triggerImport() {
+            document.getElementById('importFile').click();
+        }
+
+        function handleImportFile(e) {
+            const file = e.target.files[0];
+            e.target.value = '';
+            if (!file) return;
+
+            file.text().then(text => {
+                let state = null;
+                try {
+                    state = normalizeState(JSON.parse(text));
+                } catch (err) {
+                    state = null;
+                }
+                if (!state) {
+                    alert(`"${file.name}" isn't an export from this organizer, so nothing was changed.`);
+                    return;
+                }
+                const summary = `${state.players.length} players, ${state.tables.length} tables and ${state.event.roundCount} rounds`;
+                if (!confirm(`Replace the current event with ${summary} from "${file.name}"?`)) return;
+                applyState(state);
+                resetTimer();
+                saveState();
+                renderAll();
+            });
+        }
+
+        function triggerSaveNotification() {
+            const badge = document.getElementById('saveStatus');
+            const icon = document.getElementById('saveStatusIcon');
+            const text = document.getElementById('saveStatusText');
+
+            if (!badge) return;
+
+            icon.className = "fa-solid fa-circle-check text-emerald-400";
+            text.innerText = "Saved just now";
+            badge.classList.remove('opacity-50');
+
+            if (saveTimeout) clearTimeout(saveTimeout);
+            saveTimeout = setTimeout(() => {
+                icon.className = "fa-solid fa-cloud text-slate-500";
+                text.innerText = "Auto-saved";
+                badge.classList.add('opacity-50');
+            }, 2500);
+        }
+
+        function openResetDataModal() {
+            document.getElementById('resetDataModal').classList.remove('hidden');
+        }
+
+        function closeResetDataModal() {
+            document.getElementById('resetDataModal').classList.add('hidden');
+        }
+
+        function confirmResetAllData() {
+            localStorage.removeItem(STORAGE_KEY);
+            applyState(emptyState());
+            closeResetDataModal();
+            resetTimer();
+            saveState();
+            renderAll();
+        }
+
+        // ---------- Rounds ----------
+
+        // Returns only the seats that still make sense: the table exists, the seat is in range,
+        // the player exists and nobody else already has that seat.
+        function resolveRound(assignments) {
+            const result = {};
+            const taken = new Set();
+            const playerIds = new Set(players.map(p => p.id));
+            Object.entries(assignments || {}).forEach(([playerId, seat]) => {
+                if (!playerIds.has(playerId) || !seat) return;
+                const table = tables.find(t => t.id === seat.tableId);
+                const idx = Number(seat.seatIndex);
+                if (!table || !Number.isInteger(idx) || idx < 0 || idx >= table.capacity) return;
+                const key = `${table.id}:${idx}`;
+                if (taken.has(key)) return;
+                taken.add(key);
+                result[playerId] = { tableId: table.id, seatIndex: idx };
+            });
+            return result;
+        }
+
+        function stashCurrentRound() {
+            const map = {};
+            players.forEach(p => {
+                if (p.tableId !== null) map[p.id] = { tableId: p.tableId, seatIndex: p.seatIndex };
+            });
+            rounds[currentRound] = map;
+        }
+
+        function loadRound(index) {
+            const seats = resolveRound(rounds[index]);
+            players.forEach(p => {
+                const seat = seats[p.id];
+                p.tableId = seat ? seat.tableId : null;
+                p.seatIndex = seat ? seat.seatIndex : null;
+            });
+        }
+
+        function switchRound(index) {
+            if (index === currentRound) return;
+            stashCurrentRound();
+            currentRound = index;
+            loadRound(currentRound);
+            resetTimer();
+            saveState();
+            renderAll();
+        }
+
+        function updateRoundCount(value) {
+            const count = clampInt(value, 1, 10, eventSettings.roundCount);
+            stashCurrentRound();
+            eventSettings.roundCount = count;
+            while (rounds.length < count) rounds.push({});
+            rounds = rounds.slice(0, count);
+            if (currentRound >= count) {
+                currentRound = count - 1;
+                resetTimer();
+            }
+            loadRound(currentRound);
+            saveState();
+            renderAll();
+        }
+
+        function updateRoundMinutes(value) {
+            eventSettings.roundMinutes = clampInt(value, 5, 240, eventSettings.roundMinutes);
+            if (!timerEndsAt) resetTimer();
+            saveState();
+            renderAll();
+        }
+
+        function formatDuration(totalMinutes) {
+            const h = Math.floor(totalMinutes / 60);
+            const m = totalMinutes % 60;
+            if (h === 0) return `${m} min`;
+            return m === 0 ? `${h} h` : `${h} h ${m} min`;
+        }
+
+        function renderRoundBar() {
+            document.getElementById('roundCountInput').value = eventSettings.roundCount;
+            document.getElementById('roundMinutesInput').value = eventSettings.roundMinutes;
+            document.getElementById('eventLength').innerText =
+                `${formatDuration(eventSettings.roundCount * eventSettings.roundMinutes)} of play in total`;
+
+            const tabs = rounds.map((assignments, i) => {
+                const seated = i === currentRound
+                    ? players.filter(p => p.tableId !== null).length
+                    : Object.keys(resolveRound(assignments)).length;
+                const active = i === currentRound;
+                const cls = active
+                    ? 'bg-purple-600 border-purple-500 text-white shadow-md shadow-purple-900/40'
+                    : 'bg-slate-900 border-slate-700 text-slate-300 hover:border-purple-500/60';
+                return `
+                    <button onclick="switchRound(${i})" class="px-3.5 py-1.5 rounded-lg border text-sm font-medium flex items-center gap-2 transition ${cls}">
+                        Round ${i + 1}
+                        <span class="text-[10px] px-1.5 py-0.5 rounded ${active ? 'bg-purple-800 text-purple-100' : 'bg-slate-800 text-slate-400'}">${seated}/${players.length}</span>
+                    </button>
+                `;
+            }).join('');
+            document.getElementById('roundTabs').innerHTML = tabs;
+        }
+
+        // ---------- Round timer ----------
+
+        let timerEndsAt = null;     // timestamp while running
+        let timerRemaining = 0;     // seconds left while paused
+        let timerInterval = null;
+
+        function resetTimer() {
+            stopTimer();
+            timerRemaining = eventSettings.roundMinutes * 60;
+            renderTimer();
+        }
+
+        function stopTimer() {
+            if (timerInterval) clearInterval(timerInterval);
+            timerInterval = null;
+            timerEndsAt = null;
+        }
+
+        function toggleTimer() {
+            if (timerEndsAt) {
+                timerRemaining = secondsLeft();
+                stopTimer();
+            } else {
+                if (timerRemaining <= 0) timerRemaining = eventSettings.roundMinutes * 60;
+                timerEndsAt = Date.now() + timerRemaining * 1000;
+                timerInterval = setInterval(tickTimer, 250);
+            }
+            renderTimer();
+        }
+
+        function secondsLeft() {
+            if (!timerEndsAt) return timerRemaining;
+            return Math.max(0, Math.ceil((timerEndsAt - Date.now()) / 1000));
+        }
+
+        function tickTimer() {
+            if (secondsLeft() <= 0) {
+                stopTimer();
+                timerRemaining = 0;
+            }
+            renderTimer();
+        }
+
+        function renderTimer() {
+            const display = document.getElementById('timerDisplay');
+            const btn = document.getElementById('timerToggleBtn');
+            if (!display || !btn) return;
+            const left = secondsLeft();
+            const m = Math.floor(left / 60);
+            const sec = left % 60;
+            const pad = n => String(n).padStart(2, '0');
+            display.innerText = left <= 0 ? "Time's up" : `${pad(m)}:${pad(sec)}`;
+            display.className = `font-mono text-2xl font-bold tabular-nums ${left <= 0 ? 'text-rose-400' : left <= 300 ? 'text-amber-300' : 'text-white'}`;
+            btn.innerHTML = timerEndsAt
+                ? '<i class="fa-solid fa-pause"></i> Pause'
+                : `<i class="fa-solid fa-play"></i> ${left <= 0 ? 'Restart' : 'Start'}`;
+        }
+
+        // ---------- Seating suggestions ----------
+
+        // Pod sizes for n players: as many 4-player pods as possible, topped up with 3s
+        function suggestedPodSizes(n) {
+            if (n <= 0) return [];
+            if (n <= 5) return [Math.max(MIN_POD, n)];
+            const k = Math.ceil(n / 4);
+            const base = Math.floor(n / k);
+            const extra = n % k;
+            return Array.from({ length: k }, (_, i) => base + (i < extra ? 1 : 0));
+        }
+
+        // How many players each table gets if n players are spread as evenly as the seats allow
+        function balancedTargets(n, tbls) {
+            const targets = tbls.map(() => 0);
+            let left = Math.min(n, tbls.reduce((sum, t) => sum + t.capacity, 0));
+            while (left > 0) {
+                let best = -1;
+                tbls.forEach((t, i) => {
+                    if (targets[i] < t.capacity && (best < 0 || targets[i] < targets[best])) best = i;
+                });
+                targets[best]++;
+                left--;
+            }
+            return targets;
+        }
+
+        function getSeatingIssues() {
+            const issues = [];
+            const n = players.length;
+            if (n === 0) return issues;
+
+            const sizes = suggestedPodSizes(n);
+            const suggestion = `${sizes.length} ${sizes.length === 1 ? 'pod' : 'pods'} of ${sizes.join(', ')}`;
+            const totalSeats = tables.reduce((sum, t) => sum + t.capacity, 0);
+
+            if (tables.length === 0) {
+                issues.push({ text: `There are ${n} players but no tables yet. Suggested: ${suggestion}.`, fix: true });
+            } else if (totalSeats < n) {
+                issues.push({ text: `${n} players but only ${totalSeats} seats, so ${n - totalSeats} won't get a seat. Suggested: ${suggestion}.`, fix: true });
+            } else if (n >= MIN_POD && balancedTargets(n, tables).some(t => t < MIN_POD)) {
+                issues.push({ text: `${n} players across ${tables.length} tables leaves at least one pod with fewer than ${MIN_POD} players. Suggested: ${suggestion}.`, fix: true });
+            }
+
+            const roundLabel = `Round ${currentRound + 1}`;
+            const seated = players.filter(p => p.tableId !== null);
+            if (seated.length > 0) {
+                tables.forEach(t => {
+                    const count = seated.filter(p => p.tableId === t.id).length;
+                    if (count > 0 && count < MIN_POD) {
+                        issues.push({ text: `${t.name} has only ${count} ${count === 1 ? 'player' : 'players'} in ${roundLabel}.` });
+                    }
+                });
+
+                const freeSeats = totalSeats - seated.length;
+                const unseated = n - seated.length;
+                if (unseated > 0 && freeSeats > 0) {
+                    issues.push({ text: `${unseated} ${unseated === 1 ? 'player isn\'t' : 'players aren\'t'} seated in ${roundLabel} yet.` });
+                }
+            }
+
+            const reported = new Set();
+            players.forEach(p => {
+                if (!p.partnerId || reported.has(p.id)) return;
+                const partner = players.find(q => q.id === p.partnerId);
+                if (!partner) return;
+                reported.add(p.id);
+                reported.add(partner.id);
+                const oneSeated = p.tableId !== null || partner.tableId !== null;
+                if (oneSeated && p.tableId !== partner.tableId) {
+                    issues.push({ text: `${p.name} and ${partner.name} are locked together but sit apart in ${roundLabel}.` });
+                }
+            });
+
+            return issues;
+        }
+
+        function renderIssues(containerId) {
+            const container = document.getElementById(containerId);
+            if (!container) return;
+            const issues = getSeatingIssues();
+            if (issues.length === 0) {
+                container.innerHTML = '';
+                container.classList.add('hidden');
+                return;
+            }
+            const hasFix = issues.some(i => i.fix);
+            container.classList.remove('hidden');
+            container.innerHTML = `
+                <div class="bg-amber-950/30 border border-amber-700/50 rounded-xl p-4 text-xs text-amber-100">
+                    <div class="flex items-center justify-between gap-3 mb-2">
+                        <span class="font-semibold text-amber-300 flex items-center gap-2"><i class="fa-solid fa-lightbulb"></i> Seating suggestions</span>
+                        ${hasFix ? `<button onclick="autoFitTables()" class="px-2.5 py-1 bg-amber-500 hover:bg-amber-400 text-slate-950 font-semibold rounded-md transition flex items-center gap-1.5"><i class="fa-solid fa-wand-magic-sparkles"></i> Fix tables</button>` : ''}
+                    </div>
+                    <ul class="space-y-1.5 list-disc pl-5 text-amber-100/90">
+                        ${issues.map(i => `<li>${escapeHtml(i.text)}</li>`).join('')}
+                    </ul>
+                </div>
+            `;
+        }
+
+        // Resizes tables to the suggested pod sizes, keeping existing table names where it can
+        function autoFitTables() {
+            const sizes = suggestedPodSizes(players.length);
+            if (sizes.length === 0) return;
+            stashCurrentRound();
+            sizes.forEach((cap, i) => {
+                if (tables[i]) tables[i].capacity = cap;
+                else tables.push({ id: `tbl_${Date.now()}_${i}`, name: `Pod ${i + 1}`, capacity: cap });
+            });
+            tables = tables.slice(0, sizes.length);
+            loadRound(currentRound);
+            saveState();
+            renderAll();
+            renderIssues('hatIssues');
+        }
+
+        // ---------- Rendering ----------
+
+        function renderAll() {
+            renderRoundBar();
+            renderTables();
+            renderUnassignedRoster();
+            renderPotluckSummary();
+            updateStats();
+            renderIssues('issuesPanel');
+        }
+
+        function getExperienceBadgeClass(experience) {
+            switch (experience) {
+                case 'New': return 'bg-emerald-950 text-emerald-300 border-emerald-800';
+                case 'Learning': return 'bg-blue-950 text-blue-300 border-blue-800';
+                case 'Experienced': return 'bg-amber-950 text-amber-300 border-amber-800';
+                case 'Veteran': return 'bg-rose-950 text-rose-300 border-rose-800';
+                default: return 'bg-slate-800 text-slate-300 border-slate-700';
+            }
+        }
+
+        function partnerName(player) {
+            if (!player.partnerId) return '';
+            const partner = players.find(p => p.id === player.partnerId);
+            return partner ? partner.name : '';
+        }
+
+        function partnerBadge(player, extraClass = '') {
+            const name = partnerName(player);
+            if (!name) return '';
+            return `<div class="text-[11px] text-sky-300/90 truncate ${extraClass}" title="Locked together"><i class="fa-solid fa-link text-[9px] mr-1"></i>with ${escapeHtml(name)}</div>`;
+        }
+
+        function renderUnassignedRoster() {
+            const unassigned = players.filter(p => p.tableId === null);
+            const container = document.getElementById('unassignedList');
+            document.getElementById('unassignedCount').innerText = unassigned.length;
+
+            if (unassigned.length === 0) {
+                container.innerHTML = `
+                    <div class="h-32 border border-dashed border-slate-800 rounded-xl flex flex-col items-center justify-center text-slate-500 text-xs">
+                        <i class="fa-solid fa-circle-check text-2xl mb-1 text-slate-600"></i>
+                        <span>${players.length === 0 ? 'No players yet.' : `Everyone is seated for Round ${currentRound + 1}!`}</span>
+                    </div>
+                `;
+                return;
+            }
+
+            container.innerHTML = unassigned.map(player => `
+                <div draggable="true" ondragstart="handleDragStart(event, '${player.id}')" ondragend="handleDragEnd(event)"
+                    class="player-card bg-slate-900/90 hover:bg-slate-800 border border-slate-800 hover:border-purple-500/50 p-3 rounded-xl cursor-grab active:cursor-grabbing transition shadow-sm flex items-center justify-between group">
+                    <div class="flex flex-col gap-1 min-w-0">
+                        <div class="flex items-center gap-2">
+                            <i class="fa-solid fa-grip-vertical text-slate-600 group-hover:text-purple-400 text-xs"></i>
+                            <span class="font-semibold text-sm text-white">${escapeHtml(player.name)}</span>
+                            <span class="text-[10px] px-2 py-0.5 rounded-full border ${getExperienceBadgeClass(player.experience)}">${player.experience}</span>
+                        </div>
+                        ${player.dish ? `<div class="text-xs text-amber-400/90 flex items-center gap-1.5 pl-5"><i class="fa-solid fa-utensils text-[10px]"></i> ${escapeHtml(player.dish)}</div>` : ''}
+                        ${partnerBadge(player, 'pl-5')}
+                    </div>
+                    <div class="flex items-center gap-0.5 shrink-0">
+                        <button onclick="openEditPlayerModal('${player.id}')" class="text-slate-500 hover:text-purple-400 p-1.5 transition" title="Edit Player">
+                            <i class="fa-solid fa-pen text-xs"></i>
+                        </button>
+                        <button onclick="removePlayer('${player.id}')" class="text-slate-600 hover:text-rose-400 p-1.5 opacity-0 group-hover:opacity-100 transition" title="Delete Player">
+                            <i class="fa-solid fa-trash-can text-xs"></i>
+                        </button>
+                    </div>
+                </div>
+            `).join('');
+        }
+
+        function renderTables() {
+            const container = document.getElementById('tablesGrid');
+            if (tables.length === 0) {
+                container.innerHTML = `
+                    <div class="md:col-span-2 h-48 border border-dashed border-slate-800 rounded-2xl flex flex-col items-center justify-center text-slate-500 text-sm gap-3">
+                        <i class="fa-solid fa-chair text-2xl text-slate-600"></i>
+                        <span>No tables yet.</span>
+                        <button onclick="addTable()" class="px-3.5 py-2 bg-slate-800 hover:bg-slate-700 text-slate-200 border border-slate-700 font-medium text-xs rounded-lg flex items-center gap-2 transition">
+                            <i class="fa-solid fa-plus text-purple-400"></i> Add Table
+                        </button>
+                    </div>
+                `;
+                return;
+            }
+            container.innerHTML = tables.map(table => {
+                const seatedPlayers = players.filter(p => p.tableId === table.id);
+
+                let seatsHTML = '';
+                for (let i = 0; i < table.capacity; i++) {
+                    const occupant = seatedPlayers.find(p => p.seatIndex === i);
+
+                    if (occupant) {
+                        seatsHTML += `
+                            <div draggable="true" ondragstart="handleDragStart(event, '${occupant.id}')" ondragend="handleDragEnd(event)"
+                                class="seat player-card bg-slate-900/90 border border-slate-700 hover:border-purple-500/80 p-3 rounded-xl flex flex-col justify-between cursor-grab active:cursor-grabbing shadow-sm relative group transition">
+                                <div class="flex items-start justify-between gap-1 mb-2">
+                                    <span class="font-bold text-xs text-purple-400">Seat ${i + 1}</span>
+                                    <div class="flex items-center gap-1">
+                                        <button onclick="openEditPlayerModal('${occupant.id}')" class="text-slate-500 hover:text-purple-400 text-xs p-0.5" title="Edit Player">
+                                            <i class="fa-solid fa-pen text-[10px]"></i>
+                                        </button>
+                                        <button onclick="unseatPlayer('${occupant.id}')" class="text-slate-500 hover:text-rose-400 text-xs p-0.5" title="Unassign seat">
+                                            <i class="fa-solid fa-xmark"></i>
+                                        </button>
+                                    </div>
+                                </div>
+                                <div class="min-w-0">
+                                    <div class="font-semibold text-sm text-white truncate">${escapeHtml(occupant.name)}</div>
+                                    <div class="mt-1 flex items-center gap-1.5 flex-wrap">
+                                        <span class="text-[10px] px-1.5 py-0.2 rounded border ${getExperienceBadgeClass(occupant.experience)}">${occupant.experience}</span>
+                                    </div>
+                                    ${occupant.dish ? `<div class="mt-1 text-[11px] text-amber-400/90 truncate"><i class="fa-solid fa-utensils text-[9px] mr-1"></i>${escapeHtml(occupant.dish)}</div>` : ''}
+                                    ${partnerBadge(occupant, 'mt-1')}
+                                </div>
+                            </div>
+                        `;
+                    } else {
+                        seatsHTML += `
+                            <div ondragover="handleDragOver(event)" ondragleave="handleDragLeave(event)" ondrop="handleDrop(event, '${table.id}', ${i})"
+                                onclick="openAssignModal('${table.id}', ${i})"
+                                class="seat border-2 border-dashed border-slate-800 hover:border-purple-500/50 bg-slate-950/40 p-3 rounded-xl flex flex-col items-center justify-center text-slate-600 hover:text-purple-400 cursor-pointer transition min-h-[90px] group">
+                                <i class="fa-solid fa-user-plus text-base mb-1 group-hover:scale-110 transition-transform"></i>
+                                <span class="text-xs font-medium">Seat ${i + 1} (Empty)</span>
+                            </div>
+                        `;
+                    }
+                }
+
+                const capacityOptions = [3, 4, 5, 6]
+                    .map(n => `<option value="${n}" ${table.capacity === n ? 'selected' : ''}>${n} Players</option>`)
+                    .join('');
+
+                return `
+                    <div class="pod-card bg-mtg-card border border-mtg-border rounded-2xl p-5 flex flex-col justify-between relative">
+                        <div>
+                            <!-- Pod Header -->
+                            <div class="flex items-center justify-between gap-3 mb-4 pb-3 border-b border-mtg-border">
+                                <div class="flex items-center gap-2 flex-1 min-w-0">
+                                    <div class="w-3 h-3 shrink-0 rounded-full bg-purple-500 shadow-sm shadow-purple-500"></div>
+                                    <input type="text" value="${escapeHtml(table.name)}" onchange="updateTableName('${table.id}', this.value)"
+                                        class="w-full min-w-0 truncate bg-transparent text-base font-bold text-white focus:bg-slate-900 px-1.5 py-0.5 rounded border border-transparent focus:border-slate-700 outline-none">
+                                </div>
+                                <div class="flex items-center gap-1 shrink-0">
+                                    <select onchange="updateTableCapacity('${table.id}', this.value)" class="bg-slate-900 border border-slate-700 text-xs text-slate-300 rounded px-2 py-1 outline-none">
+                                        ${capacityOptions}
+                                    </select>
+                                    <button onclick="removeTable('${table.id}')" class="w-7 h-7 flex items-center justify-center rounded text-slate-500 hover:text-rose-400 hover:bg-rose-950/40 transition" title="Delete Table">
+                                        <i class="fa-solid fa-trash"></i>
+                                    </button>
+                                </div>
+                            </div>
+
+                            <!-- Pod Seats Visual Grid -->
+                            <div class="grid grid-cols-2 gap-3">
+                                ${seatsHTML}
+                            </div>
+                        </div>
+
+                        <!-- Table Footer Stats -->
+                        <div class="mt-4 pt-3 border-t border-slate-800/80 flex items-center justify-between text-xs text-slate-400">
+                            <span>Occupancy: <strong class="text-white">${seatedPlayers.length} / ${table.capacity}</strong></span>
+                            ${seatedPlayers.length === table.capacity ? '<span class="text-emerald-400 text-[11px] font-semibold"><i class="fa-solid fa-circle-check"></i> Pod Full</span>' : '<span class="text-slate-500 text-[11px]">Seats Available</span>'}
+                        </div>
+                    </div>
+                `;
+            }).join('');
+        }
+
+        function renderPotluckSummary() {
+            const list = document.getElementById('potluckList');
+            const dishes = players.filter(p => p.dish && p.dish.trim() !== '');
+            document.getElementById('totalDishCount').innerText = dishes.length;
+
+            if (dishes.length === 0) {
+                list.innerHTML = '<p class="italic text-slate-600">No dishes logged yet.</p>';
+                return;
+            }
+
+            list.innerHTML = dishes.map(p => `
+                <div class="flex items-center justify-between bg-slate-900/60 px-2.5 py-1.5 rounded border border-slate-800">
+                    <span class="text-amber-300 font-medium">${escapeHtml(p.dish)}</span>
+                    <span class="text-slate-400 text-[11px]">by ${escapeHtml(p.name)}</span>
+                </div>
+            `).join('');
+        }
+
+        function updateStats() {
+            const total = players.length;
+            const seated = players.filter(p => p.tableId !== null).length;
+            document.getElementById('statsTotal').innerText = `Players: ${total}`;
+            document.getElementById('statsSeated').innerText = `Seated in Round ${currentRound + 1}: ${seated}`;
+            document.getElementById('statsTables').innerText = `Tables: ${tables.length}`;
+        }
+
+        // ---------- Players ----------
+
+        function handleAddPlayer(e) {
+            e.preventDefault();
+            const nameInput = document.getElementById('playerName');
+            const experienceSelect = document.getElementById('playerExperience');
+            const dishInput = document.getElementById('playerDish');
+
+            if (!nameInput.value.trim()) return;
+
+            players.push({
+                id: 'p_' + Date.now(),
+                name: nameInput.value.trim(),
+                experience: experienceSelect.value,
+                dish: dishInput.value.trim(),
+                partnerId: null,
+                tableId: null,
+                seatIndex: null
+            });
+
+            nameInput.value = '';
+            dishInput.value = '';
+            saveState();
+            renderAll();
+        }
+
+        let editingPlayerId = null;
+
+        function openEditPlayerModal(playerId) {
+            const p = players.find(player => player.id === playerId);
+            if (!p) return;
+            editingPlayerId = playerId;
+            document.getElementById('editPlayerName').value = p.name;
+            document.getElementById('editPlayerExperience').value = p.experience || 'Learning';
+            document.getElementById('editPlayerDish').value = p.dish || '';
+
+            const others = players.filter(o => o.id !== p.id);
+            document.getElementById('editPlayerPartner').innerHTML =
+                '<option value="">Nobody (seat anywhere)</option>' +
+                others.map(o => {
+                    const taken = o.partnerId && o.partnerId !== p.id ? ` (currently with ${escapeHtml(partnerName(o))})` : '';
+                    return `<option value="${o.id}" ${p.partnerId === o.id ? 'selected' : ''}>${escapeHtml(o.name)}${taken}</option>`;
+                }).join('');
+
+            document.getElementById('editPlayerModal').classList.remove('hidden');
+            document.getElementById('editPlayerName').focus();
+        }
+
+        function closeEditPlayerModal() {
+            document.getElementById('editPlayerModal').classList.add('hidden');
+            editingPlayerId = null;
+        }
+
+        // Links two players both ways, breaking any pair either one was already in
+        function setPartner(player, partnerId) {
+            const newId = partnerId || null;
+            if (player.partnerId === newId) return;
+            const unlink = id => {
+                const x = players.find(q => q.id === id);
+                if (!x) return;
+                const old = players.find(q => q.id === x.partnerId);
+                if (old) old.partnerId = null;
+                x.partnerId = null;
+            };
+            unlink(player.id);
+            if (newId) {
+                unlink(newId);
+                const partner = players.find(q => q.id === newId);
+                if (partner) {
+                    player.partnerId = partner.id;
+                    partner.partnerId = player.id;
+                }
+            }
+        }
+
+        function saveEditPlayer(e) {
+            e.preventDefault();
+            const p = players.find(player => player.id === editingPlayerId);
+            const name = document.getElementById('editPlayerName').value.trim();
+            if (!p || !name) return;
+            p.name = name;
+            p.experience = document.getElementById('editPlayerExperience').value;
+            p.dish = document.getElementById('editPlayerDish').value.trim();
+            setPartner(p, document.getElementById('editPlayerPartner').value);
+            closeEditPlayerModal();
+            saveState();
+            renderAll();
+        }
+
+        function removePlayer(playerId) {
+            const p = players.find(player => player.id === playerId);
+            if (p) setPartner(p, null);
+            players = players.filter(player => player.id !== playerId);
+            rounds.forEach(r => { delete r[playerId]; });
+            saveState();
+            renderAll();
+        }
+
+        // ---------- Tables ----------
+
+        function addTable() {
+            tables.push({
+                id: 'tbl_' + Date.now(),
+                name: `Pod ${tables.length + 1}`,
+                capacity: 4
+            });
+            saveState();
+            renderAll();
+        }
+
+        function removeTable(tableId) {
+            players.forEach(p => {
+                if (p.tableId === tableId) {
+                    p.tableId = null;
+                    p.seatIndex = null;
+                }
+            });
+            tables = tables.filter(t => t.id !== tableId);
+            saveState();
+            renderAll();
+        }
+
+        function updateTableName(tableId, newName) {
+            const table = tables.find(t => t.id === tableId);
+            if (table) {
+                table.name = newName;
+                saveState();
+                renderIssues('issuesPanel');
+            }
+        }
+
+        function updateTableCapacity(tableId, newCap) {
+            const cap = parseInt(newCap, 10);
+            const table = tables.find(t => t.id === tableId);
+            if (table) {
+                table.capacity = cap;
+                players.forEach(p => {
+                    if (p.tableId === tableId && p.seatIndex >= cap) {
+                        p.tableId = null;
+                        p.seatIndex = null;
+                    }
+                });
+                saveState();
+            }
+            renderAll();
+        }
+
+        function unseatPlayer(playerId) {
+            const p = players.find(player => player.id === playerId);
+            if (p) {
+                p.tableId = null;
+                p.seatIndex = null;
+                saveState();
+            }
+            renderAll();
+        }
+
+        // Clears seating for the round on screen only
+        function clearSeating() {
+            players.forEach(p => {
+                p.tableId = null;
+                p.seatIndex = null;
+            });
+            saveState();
+            renderAll();
+        }
+
+        // ---------- Drag and drop ----------
+
+        function handleDragStart(e, playerId) {
+            draggedPlayerId = playerId;
+            e.dataTransfer.setData('text/plain', playerId);
+            e.target.classList.add('dragging');
+        }
+
+        function handleDragEnd(e) {
+            e.target.classList.remove('dragging');
+            draggedPlayerId = null;
+        }
+
+        function handleDragOver(e) {
+            e.preventDefault();
+            e.currentTarget.classList.add('drag-over');
+        }
+
+        function handleDragLeave(e) {
+            e.currentTarget.classList.remove('drag-over');
+        }
+
+        function handleDrop(e, tableId, seatIndex) {
+            e.preventDefault();
+            e.currentTarget.classList.remove('drag-over');
+            if (!draggedPlayerId) return;
+
+            assignPlayerToSeat(draggedPlayerId, tableId, seatIndex);
+        }
+
+        function assignPlayerToSeat(playerId, tableId, seatIndex) {
+            const currentOccupant = players.find(p => p.tableId === tableId && p.seatIndex === seatIndex);
+            if (currentOccupant) {
+                currentOccupant.tableId = null;
+                currentOccupant.seatIndex = null;
+            }
+
+            const player = players.find(p => p.id === playerId);
+            if (player) {
+                player.tableId = tableId;
+                player.seatIndex = seatIndex;
+            }
+            saveState();
+            renderAll();
+        }
+
+        function openAssignModal(tableId, seatIndex) {
+            selectedSeatTarget = { tableId, seatIndex };
+            const table = tables.find(t => t.id === tableId);
+            document.getElementById('assignModalSub').innerText = `${table ? table.name : 'Table'}, Seat ${seatIndex + 1} (Round ${currentRound + 1})`;
+
+            const unassigned = players.filter(p => p.tableId === null);
+            const container = document.getElementById('assignPlayerOptions');
+
+            if (unassigned.length === 0) {
+                container.innerHTML = '<p class="text-xs text-slate-500 italic py-2">No unassigned players available.</p>';
+            } else {
+                container.innerHTML = unassigned.map(p => `
+                    <button onclick="confirmAssignModal('${p.id}')"
+                        class="w-full text-left bg-slate-900 hover:bg-slate-800 border border-slate-800 p-2.5 rounded-lg text-xs flex items-center justify-between gap-2 text-white transition">
+                        <span class="min-w-0">
+                            <span class="font-semibold">${escapeHtml(p.name)}</span>
+                            ${partnerName(p) ? `<span class="text-sky-300/90 ml-1"><i class="fa-solid fa-link text-[9px]"></i> ${escapeHtml(partnerName(p))}</span>` : ''}
+                        </span>
+                        <span class="text-[10px] px-2 py-0.5 rounded border shrink-0 ${getExperienceBadgeClass(p.experience)}">${p.experience}</span>
+                    </button>
+                `).join('');
+            }
+
+            document.getElementById('assignModal').classList.remove('hidden');
+        }
+
+        function closeAssignModal() {
+            document.getElementById('assignModal').classList.add('hidden');
+            selectedSeatTarget = null;
+        }
+
+        function confirmAssignModal(playerId) {
+            if (selectedSeatTarget) {
+                assignPlayerToSeat(playerId, selectedSeatTarget.tableId, selectedSeatTarget.seatIndex);
+            }
+            closeAssignModal();
+        }
+
+        // ---------- Hat draw ----------
+
+        function openHatDrawModal() {
+            if (players.length === 0) {
+                alert("Please add players to the roster first!");
+                return;
+            }
+            const label = `Round ${currentRound + 1}`;
+            document.getElementById('hatTitle').innerText = `${label} Pod Scrambler`;
+            document.getElementById('hatWarning').innerText =
+                `This replaces ${label}'s seat assignments and re-assigns all players across the current tables. Locked pairs always sit together. Other rounds are not changed.`;
+            renderIssues('hatIssues');
+            document.getElementById('hatModal').classList.remove('hidden');
+        }
+
+        function closeHatDrawModal() {
+            document.getElementById('hatModal').classList.add('hidden');
+        }
+
+        function executeHatDraw() {
+            const hatIcon = document.getElementById('hatIcon');
+            hatIcon.classList.add('hat-anim');
+
+            const strategy = document.querySelector('input[name="hatStrategy"]:checked').value;
+
+            setTimeout(() => {
+                hatIcon.classList.remove('hat-anim');
+                closeHatDrawModal();
+                drawSeats(strategy);
+                saveState();
+                renderAll();
+
+                if (typeof confetti === 'function') {
+                    confetti({ particleCount: 80, spread: 70, origin: { y: 0.6 } });
+                }
+            }, 800);
+        }
+
+        // Seats every player for the current round using the chosen strategy
+        function drawSeats(strategy) {
+            players.forEach(p => {
+                p.tableId = null;
+                p.seatIndex = null;
+            });
+
+            // Shuffle first so ties land differently each draw, then group locked pairs
+            let units = buildUnits(shuffle([...players]));
+
+            if (strategy === 'skill') {
+                // Most experienced first, filled table by table so similar levels sit together
+                units.sort((a, b) => unitRank(b) - unitRank(a));
+                seatUnitsBalanced(units);
+            } else if (strategy === 'mixed') {
+                // Most experienced first, each one to the emptiest table,
+                // so every pod gets a veteran before any pod gets a second one
+                units.sort((a, b) => unitRank(b) - unitRank(a));
+                seatUnitsSpread(units);
+            } else {
+                seatUnitsBalanced(units);
+            }
+        }
+
+        function shuffle(arr) {
+            for (let i = arr.length - 1; i > 0; i--) {
+                const j = Math.floor(Math.random() * (i + 1));
+                [arr[i], arr[j]] = [arr[j], arr[i]];
+            }
+            return arr;
+        }
+
+        function experienceRank(player) {
+            return EXPERIENCE_ORDER[player.experience] || 2;
+        }
+
+        // A unit is one player, or a locked pair that must share a table
+        function buildUnits(pool) {
+            const seen = new Set();
+            const units = [];
+            pool.forEach(p => {
+                if (seen.has(p.id)) return;
+                seen.add(p.id);
+                const partner = p.partnerId ? players.find(q => q.id === p.partnerId) : null;
+                if (partner && !seen.has(partner.id)) {
+                    seen.add(partner.id);
+                    units.push([p, partner]);
+                } else {
+                    units.push([p]);
+                }
+            });
+            return units;
+        }
+
+        // A pair counts as its more experienced member
+        function unitRank(unit) {
+            return Math.max(...unit.map(experienceRank));
+        }
+
+        // A slot is one table plus the players placed at it during a draw
+        function makeSlots() {
+            return tables.map(t => ({ table: t, members: [], rankSum: 0 }));
+        }
+
+        const freeSeats = slot => slot.table.capacity - slot.members.length;
+
+        function putUnit(slot, unit) {
+            unit.forEach(p => {
+                slot.members.push(p);
+                slot.rankSum += experienceRank(p);
+            });
+        }
+
+        // A pair can be stranded when the free seats are spread one per table.
+        // Move a single player from one of those tables to another to open two seats together.
+        function placeStrandedPairs(slots, stranded) {
+            stranded.forEach(pair => {
+                const from = slots.find(s => freeSeats(s) === 1 && s.members.some(m => !m.partnerId));
+                const to = from && slots.find(s => s !== from && freeSeats(s) >= 1);
+                if (!from || !to) return; // no room anywhere; the suggestions panel reports it
+                const mover = from.members.find(m => !m.partnerId);
+                from.members.splice(from.members.indexOf(mover), 1);
+                from.rankSum -= experienceRank(mover);
+                putUnit(to, [mover]);
+                putUnit(from, pair);
+            });
+        }
+
+        function finishSlots(slots) {
+            slots.forEach(slot => slot.members.forEach((p, i) => {
+                p.tableId = slot.table.id;
+                p.seatIndex = i;
+            }));
+        }
+
+        // Fills tables in order, but only up to an even share each, so pods come out balanced (e.g. 3 + 2, not 4 + 1)
+        function seatUnitsBalanced(units) {
+            const slots = makeSlots();
+            if (slots.length === 0) return;
+            const total = units.reduce((sum, u) => sum + u.length, 0);
+            const targets = balancedTargets(total, tables);
+            const stranded = [];
+            units.forEach(unit => {
+                const slot = slots.find((s, i) => targets[i] - s.members.length >= unit.length)
+                    || slots.find(s => freeSeats(s) >= unit.length);
+                if (slot) putUnit(slot, unit);
+                else if (unit.length === 2) stranded.push(unit);
+            });
+            placeStrandedPairs(slots, stranded);
+            finishSlots(slots);
+        }
+
+        // Deals units, strongest first, to whichever table has the fewest players so far,
+        // breaking ties toward the table with the least experience. Every pod gets a strong
+        // player before any pod gets a second one.
+        function seatUnitsSpread(units) {
+            const slots = makeSlots();
+            if (slots.length === 0) return;
+            const stranded = [];
+            units.forEach(unit => {
+                const open = slots.filter(s => freeSeats(s) >= unit.length);
+                if (open.length === 0) {
+                    if (unit.length === 2) stranded.push(unit);
+                    return;
+                }
+                open.sort((a, b) => (a.members.length - b.members.length) || (a.rankSum - b.rankSum));
+                putUnit(open[0], unit);
+            });
+            placeStrandedPairs(slots, stranded);
+            finishSlots(slots);
+        }
+
+        // Helper Utility
+        function escapeHtml(str) {
+            if (!str) return '';
+            return String(str).replace(/&/g, "&amp;").replace(/</g, "&lt;").replace(/>/g, "&gt;").replace(/"/g, "&quot;").replace(/'/g, "&#039;");
+        }
+    </script>
+</body>
+</html>
