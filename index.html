@@ -635,6 +635,9 @@
                             <button onclick="testChime()" class="disp-icon-btn" title="Test the sound">
                                 <i class="fa-solid fa-volume-high"></i>
                             </button>
+                            <button id="dispFullscreenBtn" onclick="toggleFullscreen()" class="disp-icon-btn" title="Full screen">
+                                <i class="fa-solid fa-expand"></i>
+                            </button>
                             <button onclick="closeDisplayMode()" class="disp-icon-btn" title="Close">
                                 <i class="fa-solid fa-xmark"></i>
                             </button>
@@ -1475,6 +1478,7 @@
         }
 
         function openDisplayMode() {
+            enterFullscreen();
             document.getElementById('displayMode').classList.remove('hidden');
             document.body.style.overflow = 'hidden';
             unlockAudio();
@@ -1487,11 +1491,59 @@
         }
 
         function closeDisplayMode() {
+            exitFullscreen();
             document.getElementById('displayMode').classList.add('hidden');
             document.body.style.overflow = '';
             if (clockInterval) clearInterval(clockInterval);
             clockInterval = null;
         }
+
+        // ---------- Full screen (hides the address bar while seating is on display) ----------
+        // The whole page goes full screen, not just the seating view, so the sound prompt still shows.
+        // iPad Safari supports this from iPadOS 16.4 (older versions use the webkit names); iPhone does not.
+
+        function fullscreenElement() {
+            return document.fullscreenElement || document.webkitFullscreenElement || null;
+        }
+
+        function canFullscreen() {
+            const root = document.documentElement;
+            return !!(root && (root.requestFullscreen || root.webkitRequestFullscreen));
+        }
+
+        function enterFullscreen() {
+            if (!canFullscreen() || fullscreenElement()) return;
+            const root = document.documentElement;
+            try {
+                const result = root.requestFullscreen ? root.requestFullscreen({ navigationUI: 'hide' }) : root.webkitRequestFullscreen();
+                if (result && result.catch) result.catch(() => {});
+            } catch (err) { /* refused (e.g. not from a tap); the view still works without it */ }
+        }
+
+        function exitFullscreen() {
+            if (!fullscreenElement()) return;
+            try {
+                const result = document.exitFullscreen ? document.exitFullscreen() : document.webkitExitFullscreen();
+                if (result && result.catch) result.catch(() => {});
+            } catch (err) { /* already left full screen */ }
+        }
+
+        function toggleFullscreen() {
+            if (fullscreenElement()) exitFullscreen();
+            else enterFullscreen();
+        }
+
+        function renderFullscreenButton() {
+            const btn = document.getElementById('dispFullscreenBtn');
+            if (!btn) return;
+            btn.classList.toggle('hidden', !canFullscreen());
+            const on = !!fullscreenElement();
+            btn.title = on ? 'Exit full screen' : 'Full screen';
+            btn.innerHTML = `<i class="fa-solid ${on ? 'fa-compress' : 'fa-expand'}"></i>`;
+        }
+
+        document.addEventListener('fullscreenchange', renderFullscreenButton);
+        document.addEventListener('webkitfullscreenchange', renderFullscreenButton);
 
         function displayRoundStep(delta) {
             const next = currentRound + delta;
@@ -1504,6 +1556,7 @@
             document.getElementById('displayOf').innerText = rounds.length > 1 ? `of ${rounds.length}` : '';
             document.getElementById('displayPrev').disabled = currentRound === 0;
             document.getElementById('displayNext').disabled = currentRound >= rounds.length - 1;
+            renderFullscreenButton();
             renderTimerUI();
 
             const podsEl = document.getElementById('displayPods');
