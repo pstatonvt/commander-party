@@ -1,0 +1,17 @@
+{
+  "routes": [
+    { "route": "/api/host/*", "allowedRoles": ["host"] },
+    { "route": "/api/*", "allowedRoles": ["anonymous"] },
+    { "route": "/.auth/login/github", "allowedRoles": ["anonymous"] },
+    { "route": "/.auth/login/*", "statusCode": 404 }
+  ],
+  "globalHeaders": {
+    "X-Robots-Tag": "noindex, nofollow, noarchive",
+    "X-Content-Type-Options": "nosniff",
+    "X-Frame-Options": "DENY",
+    "Referrer-Policy": "same-origin"
+  },
+  "platform": {
+    "apiRuntime": "node:20"
+  }
+}

@@ -1,0 +1,6 @@
+# Crawling is allowed on purpose. Every page and API response carries
+# "noindex" (meta tag + X-Robots-Tag header), and search engines only obey
+# noindex on pages they are allowed to fetch. Blocking crawling here would
+# let a linked URL still appear in results as a bare link.
+User-agent: *
+Disallow:
