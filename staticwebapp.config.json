@@ -12,6 +12,6 @@
     "Referrer-Policy": "same-origin"
   },
   "platform": {
-    "apiRuntime": "node:20"
+    "apiRuntime": "node:22"
   }
 }

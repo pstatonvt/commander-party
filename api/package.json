@@ -1,0 +1,17 @@
+{
+  "name": "commander-party-api",
+  "version": "1.0.0",
+  "private": true,
+  "description": "API for Commander Party shareable party links (Azure Static Web Apps managed functions).",
+  "main": "src/functions/*.js",
+  "engines": {
+    "node": ">=22"
+  },
+  "scripts": {
+    "test": "node --test \"test/**/*.test.js\""
+  },
+  "dependencies": {
+    "@azure/functions": "^4.17.0",
+    "mssql": "^12.7.0"
+  }
+}
