@@ -81,6 +81,8 @@ Each function validates and trims input, rejects unknown fields, checks the caps
 
 Because the app location is the repo root, Azure uploads every file in the repo as static content. The config therefore works as an allow-list: it serves only `/`, `/index.html`, `/robots.txt`, `/api/*`, and `/.auth/*`, and returns 404 for everything else, including the docs, SQL scripts, workflows, and API source. **Any new file the site needs to serve must be added to the allow-list.**
 
+Azure ignores the `/.auth/login/*` wildcard for its built-in sign-in providers, so Microsoft (`aad`) and X (`twitter`) sign-in are each blocked by name. Only GitHub sign-in is open, and only the invited GitHub account gets the `host` role.
+
 API 401s are returned as-is, not redirected, so `fetch` gets a clean status and the front end sends the host to `/.auth/login/github` itself.
 
 Only the maintainer gets the `host` role: in the portal, SWA > Role management > Invite, GitHub provider, your username, role `host`. Nobody else can ever reach `/api/host/*` even if they sign in with GitHub.
@@ -177,6 +179,7 @@ swa start . --api-devserver-url http://localhost:7071
 
 - Requests with a malformed GUID or invalid body are rejected **before** connecting to SQL, so junk traffic never wakes a paused database.
 - A paused or resuming database returns `503` with `Retry-After: 30`; the front end should show "waking up, retrying" and retry.
+- A cold start can take longer than the roughly 45 seconds Static Web Apps waits for the API. Azure then answers `500` with the plain-text body `Backend call failure`, before the API can reply. This was seen on the first live request after deploying. The front end should treat that `500` like a `503`: wait, then retry once or twice.
 - Join outcomes: `201` joined, `400` bad input, `404` unknown link, `409` party full or duplicate name (case-insensitive), `410` expired, `413` body too large, `415` not JSON, `429` rate-limited.
 - Guests cannot set partners. Locked pairs stay a host action (step C).
 - `npm audit` reports a high-severity advisory in `@azure/msal-node`, pulled in by `mssql` > `tedious` > `@azure/identity`. It affects the Entra ID authorization-code flow, which this API never uses (it signs in with a SQL password), and no compatible fix is published yet. Re-run `npm audit` before deploying.
