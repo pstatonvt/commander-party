@@ -31,7 +31,7 @@ A browser app cannot hold a secret. Anything the page can send, someone with the
 |---|---|
 | Only the API can touch the database | The SQL firewall allows only Azure services, plus the maintainer's IP for SSMS. The API uses a dedicated low-privilege SQL login that can only touch the app's tables. The connection string lives in SWA app settings (server side), never in the repo or the page. |
 | Only the front end can call the API | Host endpoints require sign-in with the `host` role. Guest endpoints require a valid, unexpired party GUID, and are rate-limited and capped (below). The API sends no CORS headers, so other websites can't read its responses from a visitor's browser; that is a courtesy, not a security boundary. |
-| Nobody can fill the database | Hard caps in the API: max players per party, max field lengths, a per-party join rate limit (step B), and a per-host party cap (step C). A nightly purge of expired parties (step F) is planned. Even if every cap failed, the SQL free offer auto-pauses instead of billing. |
+| Nobody can fill the database | Hard caps in the API: max players per party, max field lengths, a per-party join rate limit (step B), a per-host party cap (step C), and a weekly purge of long-expired parties (step F). Even if every cap failed, the SQL free offer auto-pauses instead of billing. |
 | Spending stays under $50/month | A $50 Budget with alerts at 50 / 80 / 100%. **Budgets do not stop resources on pay-as-you-go**, so the ceiling really comes from: SWA Free (cannot bill), SQL auto-pause, and leaving the Functions free grant untouched. |
 | Un-indexed | `X-Robots-Tag: noindex, nofollow` header on every response and `<meta name="robots">` in the page. `robots.txt` deliberately allows crawling, because Google only obeys noindex on pages it can fetch. Plus turn off the old GitHub Pages site. |
 
@@ -76,7 +76,7 @@ All responses JSON. `{guid}` is the party id.
 | `GET /api/parties/{guid}` | anyone with the link | Public view: party name, players (no edit tokens), current round seating, potluck list, `expiresAt`. 404 if unknown, 410 if expired. | Built (B) |
 | `POST /api/parties/{guid}/players` | anyone with the link | Guest joins. Returns the player plus their `editToken`. | Built (B) |
 | `PUT /api/parties/{guid}/players/{id}` | guest with matching `editToken` | Guest edits their own entry. | Built (B) |
-| `POST /api/admin/purge` | GitHub Actions cron, secret header | Delete parties past `ExpiresAt` + 30 days. (Managed Functions only allow HTTP triggers, so the schedule lives in a GitHub workflow.) | Step F |
+| `POST /api/maintenance/purge` | GitHub Actions schedule, `x-purge-secret` header | Delete parties more than 30 days past `ExpiresAt` (players go with them) and join-rate-limit records older than an hour or for deleted parties. Returns the counts. A wrong or missing secret gets the same 404 as an unknown route, before the database is touched, and a `PURGE_SECRET` shorter than 16 characters turns the route off. Not under `/api/admin` because Azure Functions reserves routes starting with `admin`. Managed Functions only allow HTTP triggers, so the schedule lives in a GitHub workflow. | Built (F) |
 
 Each function validates and trims input, rejects unknown fields, checks the caps above, and talks to SQL through parameterised queries (`mssql` package). Host identity comes from the `x-ms-client-principal` header SWA injects, never from the body.
 
@@ -124,7 +124,7 @@ Only the maintainer gets the `host` role: in the portal, SWA > Role management >
 +-- docs/azure-plan.md          (this file)
 +-- .github/workflows/
     +-- azure-static-web-apps-*.yml (added by Azure when the repo is linked)
-    +-- purge-expired.yml           (nightly cron calling /api/admin/purge)
+    +-- purge-expired.yml           (weekly schedule calling /api/maintenance/purge)
 ```
 
 ## 6. Azure setup, step by step (portal work, done alongside the code)
@@ -145,7 +145,7 @@ Only the maintainer gets the `host` role: in the portal, SWA > Role management >
 9. SWA > Settings > Environment variables: add `SQL_CONNECTION_STRING`, `IP_HASH_SALT` (a long random string, used to hash guest IPs for rate limiting), and `PURGE_SECRET` (another long random string).
 10. SWA > Role management > Invite: provider GitHub, your GitHub username, role `host`, expiry max. Accept the invite link.
 11. Note the new URL (`https://<name>.azurestaticapps.net`). Optionally add a custom domain (free on SWA). This project uses https://commanderparty.com: the domain is registered at Cloudflare with DNS-only CNAME records for the apex (flattened) and `www`, both pointing at the `azurestaticapps.net` hostname, and Azure issues the certificates. In the Static Web App's Custom domains page, set it as the default domain so the `www` and `azurestaticapps.net` addresses redirect to it with a 301, keeping the `?party=` query string. Share links use whatever address the organizer is open on, so open it at the custom domain before generating links.
-12. In GitHub repo Settings > Secrets, add `PURGE_SECRET` with the same value for the nightly workflow.
+12. In GitHub repo Settings > Secrets and variables > Actions, add `PURGE_SECRET` with the same value, for the weekly cleanup workflow.
 
 **Phase 3: retire GitHub Pages** (done)
 13. Repo Settings > Pages > disable, or leave a tiny redirect page with noindex. Either way the old GitHub Pages URL should stop serving the organizer so there is one home, indexed nowhere.
@@ -159,7 +159,14 @@ Only the maintainer gets the `host` role: in the portal, SWA > Role management >
 | C (done) | Host routes + role enforcement | `npm test` (fake DB, including 401/403 on every host route); host SQL run against a local SQL Server scratch database; live `/api/host/parties` returns 401 signed out |
 | D (done) | Front end: party-mode load, guest view, join form, expired page | Tested in a browser against a stand-in API that mimics the real responses, including a sleeping database (503, then a gateway timeout) and a host removing the guest. Checked at phone width. |
 | E (done) | Generate-link slide-out, cloud autosave, roster polling | Tested in a browser with the real API handlers against a local SQL Server scratch database, behind a stand-in for Azure's sign-in and routing: sign in, generate (seats carried over), autosave, a guest joining and appearing, host add/edit/pair/remove, reload as host, guest preview, a non-host account getting the guest page, a save from another device, a failed save recovering, and deleting the party |
-| F | Purge workflow, rate-limit table, budget alert test | Manually run the workflow; hammer the join endpoint and see 429 |
+| F (done) | Purge workflow, rate-limit table, budget alert test | Unit tests for the secret check; the purge SQL run against a local SQL Server scratch database (deletes only parties 30+ days past expiry, their players, and stale rate-limit rows; a second run deletes nothing). Live on commanderparty.com: 413 for a 20 KB body, 415 for the wrong content type, 400 for broken JSON, an empty or 41-character name, an unknown field, or a bad experience level, 404 for a malformed party id, and 401 for host routes signed out or with a forged identity header. The per-IP join limit and 40-player cap were verified against SQL Server in steps B and C; checking them live needs a real party link. |
+
+### Cleanup and cost notes (from step F)
+
+- The cleanup job (`.github/workflows/purge-expired.yml`) runs Sundays at 09:17 UTC and can be started by hand from the Actions tab with **Run workflow**. It retries server errors five times, 30 seconds apart, to ride out a sleeping database, and fails loudly if the secret is missing or refused.
+- It runs weekly rather than nightly because every call wakes the free-tier database, and a woken database stays on until its auto-pause delay passes, using free compute the whole time. Waking it once a day could use a large share of the monthly allowance; once a week barely registers.
+- Expired parties stay readable as "this party has ended" for 30 days before the purge removes them. A host at the 20-party cap also clears their own expired parties when creating a new one.
+- Budget alerts can't be tested from code. In the portal, Cost Management > Budgets should show the $50 budget with alerts at 50, 80, and 100%.
 
 Local dev: the SWA CLI emulates auth (`/.auth/me` with a fake host user) and routes, so the whole flow runs on `http://localhost:4280` before anything is deployed.
 

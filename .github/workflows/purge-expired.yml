@@ -1,0 +1,52 @@
+# Weekly cleanup: deletes parties more than 30 days past their expiry, and old
+# join-rate-limit records, by calling the API's protected purge route.
+#
+# Weekly rather than nightly on purpose: every call wakes the free-tier
+# database, and each wake uses some of its monthly free compute.
+#
+# Needs the repository secret PURGE_SECRET, matching the PURGE_SECRET app
+# setting on the Static Web App. Run it by hand from the Actions tab with
+# "Run workflow".
+
+name: Purge expired parties
+
+on:
+  schedule:
+    - cron: "17 9 * * 0" # Sundays 09:17 UTC
+  workflow_dispatch:
+
+permissions: {}
+
+jobs:
+  purge:
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+    steps:
+      - name: Call the purge route
+        env:
+          PURGE_SECRET: ${{ secrets.PURGE_SECRET }}
+          PURGE_URL: https://commanderparty.com/api/maintenance/purge
+        run: |
+          if [ -z "$PURGE_SECRET" ]; then
+            echo "::error::The PURGE_SECRET repository secret is not set."
+            exit 1
+          fi
+          # A sleeping database can take longer than the gateway allows on the
+          # first call, so retry server errors a few times.
+          for attempt in 1 2 3 4 5; do
+            status=$(curl -sS -o response.json -w '%{http_code}' --max-time 120 \
+              -X POST -H "x-purge-secret: $PURGE_SECRET" "$PURGE_URL" || echo 000)
+            echo "Attempt $attempt: HTTP $status"
+            if [ "$status" = "200" ]; then
+              cat response.json
+              echo
+              exit 0
+            fi
+            if [ "$status" != "000" ] && [ "$status" -lt 500 ]; then
+              echo "::error::Purge refused with HTTP $status. Check that PURGE_SECRET matches the Static Web App setting."
+              exit 1
+            fi
+            sleep 30
+          done
+          echo "::error::Purge did not succeed after 5 attempts."
+          exit 1

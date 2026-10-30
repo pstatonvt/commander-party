@@ -32,6 +32,9 @@ module.exports = Object.freeze({
     STATE_ID_MAX: 64,
     TABLE_NAME_MAX: 80,
 
+    // The weekly cleanup deletes parties this many days after they expire.
+    PURGE_GRACE_DAYS: 30,
+
     // Seconds a client should wait when the database is paused or waking up.
     DB_RETRY_AFTER_SECONDS: 30
 });
