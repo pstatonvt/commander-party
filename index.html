@@ -768,13 +768,13 @@
 
     <!-- Share panel: slides out from the left edge (hover the tab, or tap it or the Share link button) -->
     <div class="share-tab-zone fixed left-0 top-0 w-8 h-52 z-40" aria-hidden="true"></div>
-    <button id="shareTab" type="button" onclick="openSharePanel()" onmouseenter="openSharePanel()" aria-controls="sharePanel" aria-expanded="false"
+    <button id="shareTab" type="button" onclick="openSharePanel()" onmouseenter="openSharePanel({ hover: true })" onmouseleave="closeSharePanelSoon()" aria-controls="sharePanel" aria-expanded="false"
         class="share-tab fixed left-0 top-28 z-40 flex items-center gap-2 pl-2 pr-3 py-2.5 bg-felt-700 hover:bg-felt-600 text-white text-xs font-semibold rounded-r-xl border border-l-0 border-felt-500 shadow-lg">
         <i class="fa-solid fa-link"></i> <span id="shareTabLabel">Generate link</span>
     </button>
     <div id="sharePanelBackdrop" class="fixed inset-0 z-40 bg-black/40 hidden" onclick="closeSharePanel()"></div>
     <aside id="sharePanel" class="share-panel fixed left-0 top-0 bottom-0 z-50 w-[22rem] max-w-[92vw] bg-mtg-card border-r border-mtg-border shadow-2xl overflow-y-auto"
-        onmouseleave="closeSharePanelSoon()" onmouseenter="cancelSharePanelClose()" aria-label="Share this party" aria-hidden="true">
+        onmouseleave="closeSharePanelSoon()" onmouseenter="cancelSharePanelClose()" onpointerdown="pinSharePanel()" aria-label="Share this party" aria-hidden="true">
         <div class="flex items-center justify-between px-5 py-4 border-b border-mtg-border">
             <h2 class="text-base font-semibold text-white flex items-center gap-2"><i class="fa-solid fa-share-nodes text-felt-400"></i> Share this party</h2>
             <button type="button" onclick="closeSharePanel()" class="text-stone-400 hover:text-white p-1" aria-label="Close"><i class="fa-solid fa-xmark text-lg"></i></button>
@@ -3199,19 +3199,35 @@
             return document.getElementById('sharePanel').classList.contains('open');
         }
 
-        function openSharePanel() {
+        // Hovering the tab peeks the panel open without dimming the page; it
+        // closes again when the pointer moves away. A click or tap pins it
+        // open and dims the page behind it until it's closed.
+        let sharePanelPinned = false;
+
+        function openSharePanel(options = {}) {
             cancelSharePanelClose();
+            if (!options.hover && !sharePanelPinned) {
+                sharePanelPinned = true;
+                document.getElementById('sharePanelBackdrop').classList.remove('hidden');
+            }
             if (sharePanelOpen()) return;
             const panel = document.getElementById('sharePanel');
             panel.classList.add('open');
             panel.setAttribute('aria-hidden', 'false');
             document.getElementById('shareTab').setAttribute('aria-expanded', 'true');
-            document.getElementById('sharePanelBackdrop').classList.remove('hidden');
             renderSharePanel();
             refreshHostAuth().then(() => {
                 renderSharePanel();
                 if (hostAuth.isHost) loadHostParties();
             });
+        }
+
+        // Clicking inside a hover-opened panel means it's in use: keep it open and dim the page
+        function pinSharePanel() {
+            if (!sharePanelOpen() || sharePanelPinned) return;
+            cancelSharePanelClose();
+            sharePanelPinned = true;
+            document.getElementById('sharePanelBackdrop').classList.remove('hidden');
         }
 
         function closeSharePanel() {
@@ -3221,13 +3237,17 @@
             panel.setAttribute('aria-hidden', 'true');
             document.getElementById('shareTab').setAttribute('aria-expanded', 'false');
             document.getElementById('sharePanelBackdrop').classList.add('hidden');
+            sharePanelPinned = false;
             shareMessage = '';
         }
 
-        // Hover-opened panels close when the pointer leaves, unless something inside has focus
+        // Hover-opened panels close when the pointer leaves, unless they were
+        // pinned by a click or something inside has focus
         function closeSharePanelSoon() {
             cancelSharePanelClose();
+            if (sharePanelPinned) return;
             sharePanelCloseTimer = setTimeout(() => {
+                if (sharePanelPinned) return;
                 const panel = document.getElementById('sharePanel');
                 if (!panel.contains(document.activeElement)) closeSharePanel();
             }, 600);
