@@ -14,10 +14,20 @@ Live site: https://purple-dune-064af1710.3.azurestaticapps.net
 - **Show Seating.** A full-screen display of the current pods for a TV or projector.
 - **Tournament Mode.** Record life totals after each round and see running standings.
 - **Saving.** Everything autosaves in your browser. Export and Import move an event between devices as a JSON file.
+- **Shareable party links.** The host can turn an event into a private link. Guests open it on their phones, add their name, experience, and dish, and see the seating. The event then saves to the cloud, and new guests appear in the host's roster.
 
-## In progress: shareable party links
+## Sharing a party
 
-The next version moves the site to Azure so a host can generate a private link for a party. Guests open the link, add their own name, experience, and dish, and see the seating. The design, security model, and setup steps are in [docs/azure-plan.md](docs/azure-plan.md).
+1. Open the organizer and set up the event as usual.
+2. Hover the top-left corner and click **Generate link**, or tap **Share link** under the save badge. Sign in with the host's GitHub account the first time.
+3. Name the party and click **Generate link**. Copy the link and send it to your guests.
+4. Guests open the link and add themselves. They show up in your roster, unseated, within about a minute. Seat them as usual.
+
+The shared party saves to the cloud, so you can open the same link on another device and pick up where you left off. The event saved in your browser isn't changed. Links stop working 60 days after they're made. Import and Clear All Data only work on the event saved in your browser, so they're turned off while a shared party is open.
+
+## Shareable links: build status
+
+The design, security model, and setup steps are in [docs/azure-plan.md](docs/azure-plan.md).
 
 | Step | What | Status |
 |---|---|---|
@@ -25,10 +35,9 @@ The next version moves the site to Azure so a host can generate a private link f
 | B | Guest API: read a party, join, edit your own entry | Done |
 | C | Host API: create, save, and manage parties | Done |
 | D | Guest view, join form, and expired-link page | Done |
-| E | Generate-link button, cloud autosave, live roster | Not started |
+| E | Generate-link button, cloud autosave, live roster | Done |
 | F | Expired-party cleanup and limit testing | Not started |
 
-Until step E ships, the organizer works as it always has, saving only in your browser. Party links already open the guest page, but there's no button to create one yet.
 
 ## Project layout
 
