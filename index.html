@@ -806,24 +806,6 @@
         const MIN_POD = 3;
         const MAX_POD = 6;
 
-        // Demo roster shown the first time the page opens with nothing saved.
-        // Seats here become Round 1's seating.
-        const DEFAULT_PLAYERS = [
-            { id: '1', name: 'Player 1', experience: 'Learning', dish: 'Guacamole & Tortilla Chips', tableId: 'tbl_1', seatIndex: 0 },
-            { id: '2', name: 'Player 2', experience: 'New', dish: 'Vegetarian Chili', tableId: 'tbl_1', seatIndex: 1 },
-            { id: '3', name: 'Player 3', experience: 'Veteran', dish: 'Craft Beer & Sodas', tableId: 'tbl_1', seatIndex: 2 },
-            { id: '4', name: 'Player 4', experience: 'Veteran', dish: 'Brownies & Cookies', tableId: 'tbl_1', seatIndex: 3 },
-            { id: '5', name: 'Player 5', experience: 'Learning', dish: 'Hummus & Pita Chips', tableId: 'tbl_2', seatIndex: 0 },
-            { id: '6', name: 'Player 6', experience: 'New', dish: 'Fruit Salad Platter', tableId: 'tbl_2', seatIndex: 1 },
-            { id: '7', name: 'Player 7', experience: 'Veteran', dish: 'Host (Drinks Bar)', tableId: 'tbl_2', seatIndex: 2 },
-            { id: '8', name: 'Player 8', experience: 'Learning', dish: 'Salsa & Wings', tableId: 'tbl_2', seatIndex: 3 }
-        ];
-
-        const DEFAULT_TABLES = [
-            { id: 'tbl_1', name: 'Pod 1 (Sol Ring)', capacity: 4 },
-            { id: 'tbl_2', name: 'Pod 2 (Command Tower)', capacity: 4 }
-        ];
-
         // Active State
         // Tables are shared by every round. Each round keeps its own seating in `rounds`
         // ({ playerId: { tableId, seatIndex } }). The players' tableId / seatIndex fields
@@ -1010,10 +992,11 @@
                     }
                 }
             } catch (err) {
-                console.warn("Could not load state from localStorage, falling back to defaults.", err);
+                console.warn("Could not load state from localStorage, starting an empty event.", err);
             }
 
-            applyState(normalizeState({ players: DEFAULT_PLAYERS, tables: DEFAULT_TABLES }));
+            // First visit (or unreadable save): start with no players, dishes, or pods
+            applyState(emptyState());
             saveState();
         }
 

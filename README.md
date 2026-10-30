@@ -13,7 +13,7 @@ Live site: https://commanderparty.com
 - **Multiple rounds.** Each round keeps its own seating, with a round timer and chimes at the halfway point and at time.
 - **Show Seating.** A full-screen display of the current pods for a TV or projector.
 - **Tournament Mode.** Record life totals after each round and see running standings.
-- **Saving.** Everything autosaves in your browser. Export and Import move an event between devices as a JSON file.
+- **Saving.** A first visit starts with an empty event: no players, dishes, or pods. Everything autosaves in your browser. Export and Import move an event between devices as a JSON file.
 - **Shareable party links.** The host can turn an event into a private link. Guests open it on their phones, add their name, experience, and dish, and see the seating. The event then saves to the cloud, and new guests appear in the host's roster.
 
 ## Sharing a party
