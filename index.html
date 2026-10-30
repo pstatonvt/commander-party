@@ -2828,6 +2828,8 @@
         let shareMessage = '';
         let shareMessageIsError = false;
         let shareBusy = false;
+        let shareSlow = false;          // Generate link is taking a while: show the patience note
+        let sharePartyNameDraft = null; // what's typed in the party name box, kept across redraws
         let sharePanelCloseTimer = null;
         let toastTimer = null;
 
@@ -3257,6 +3259,8 @@
         const shareSecondary = 'px-3 py-2 bg-stone-800 hover:bg-stone-700 text-stone-200 border border-stone-700 text-xs font-medium rounded-lg transition inline-flex items-center gap-1.5';
 
         function renderSharePanel() {
+            const nameBox = document.getElementById('partyNameInput');
+            if (nameBox) sharePartyNameDraft = nameBox.value;
             const body = document.getElementById('linkDrawerBody');
             const message = shareMessage
                 ? `<div class="rounded-lg px-3 py-2 ${shareMessageIsError ? 'text-red-300 bg-red-950/50 border border-red-900/70' : 'text-emerald-300 bg-emerald-950/50 border border-emerald-800/70'}" role="status">${escapeHtml(shareMessage)}</div>`
@@ -3284,11 +3288,12 @@
                         <p class="text-stone-300">Make a private link for this event. Guests who open it can add their name, experience, and potluck dish, and see the seating.</p>
                         <div>
                             <label for="partyNameInput" class="block text-xs font-medium text-stone-400 mb-1">Party name</label>
-                            <input type="text" id="partyNameInput" maxlength="80" value="${escapeHtml(defaultPartyName())}"
+                            <input type="text" id="partyNameInput" maxlength="80" value="${escapeHtml(sharePartyNameDraft !== null ? sharePartyNameDraft : defaultPartyName())}" ${shareBusy ? 'readonly' : ''}
                                 class="w-full bg-stone-900/90 border border-stone-700 rounded-lg px-3 py-2 text-base sm:text-sm text-white focus:outline-none focus:border-felt-500 focus:ring-1 focus:ring-felt-500">
                         </div>
+                        ${shareBusy && shareSlow ? `<div class="rounded-lg px-3 py-2 text-amber-200 bg-amber-950/40 border border-amber-800/60 text-xs" role="status">${escapeHtml(SLOW_WAKE_NOTE)}</div>` : ''}
                         <button type="button" onclick="generatePartyLink()" ${shareBusy ? 'disabled' : ''} class="${shareButton}">
-                            <i class="fa-solid ${shareBusy ? 'fa-spinner fa-spin' : 'fa-link'}"></i> ${shareBusy ? 'Creating...' : 'Generate link'}
+                            <i class="fa-solid ${shareBusy ? 'fa-spinner fa-spin' : 'fa-link'}"></i> ${shareBusy ? (shareSlow ? 'Waking up the database...' : 'Creating...') : 'Generate link'}
                         </button>
                         <p class="text-xs text-stone-500">This copies the event on screen, with its ${players.length} player${players.length === 1 ? '' : 's'}, into a shared party that saves to the cloud. The event saved in this browser stays as it is. Links stop working after 60 days.</p>
                     </div>` + partiesListHtml() + account;
@@ -3342,23 +3347,57 @@
                 </div>`;
         }
 
+        // A random v4 GUID, made in the browser
+        function newGuid() {
+            if (window.crypto && typeof window.crypto.randomUUID === 'function') return window.crypto.randomUUID();
+            const b = window.crypto.getRandomValues(new Uint8Array(16));
+            b[6] = (b[6] & 0x0f) | 0x40;
+            b[8] = (b[8] & 0x3f) | 0x80;
+            const h = Array.from(b, x => x.toString(16).padStart(2, '0')).join('');
+            return `${h.slice(0, 8)}-${h.slice(8, 12)}-${h.slice(12, 16)}-${h.slice(16, 20)}-${h.slice(20)}`;
+        }
+
+        // Creating a party can take up to a minute when the free database has
+        // been asleep, which can outlast Azure's ~45 s gateway. The page picks
+        // the party id up front, so retrying after a timeout or a dropped
+        // connection gets the same party back instead of making a second one.
         async function generatePartyLink() {
             if (shareBusy) return;
             const input = document.getElementById('partyNameInput');
             const name = (input && input.value.trim()) || defaultPartyName();
             shareBusy = true;
+            shareSlow = false;
             shareMessage = '';
             renderSharePanel();
+            const slowTimer = setTimeout(() => {
+                if (!shareBusy) return;
+                shareSlow = true;
+                renderSharePanel();
+            }, SLOW_NOTICE_MS);
 
             stashCurrentRound();
-            const result = await partyRequest('POST', '/host/parties', {
+            const body = {
+                id: newGuid(),
                 name,
                 state: { event: eventSettings, tables, rounds, results, currentRound },
                 players: players.map(p => ({ id: p.id, name: p.name, experience: p.experience, dish: p.dish || '', partnerId: p.partnerId || null }))
-            });
+            };
+            const retryDelays = [5000, 10000, 20000];
+            let result;
+            for (let attempt = 0; ; attempt++) {
+                result = await hostFetch('POST', '/host/parties', body);
+                const stillWaking = result.status === 0 || result.status === 502 || result.status === 503 || result.status === 504 || result.gatewayTimeout;
+                if (!stillWaking || attempt >= retryDelays.length) break;
+                shareSlow = true;
+                renderSharePanel();
+                await partySleep(retryDelays[attempt]);
+            }
+            clearTimeout(slowTimer);
             shareBusy = false;
+            shareSlow = false;
 
-            if (result.status === 201 && result.body && result.body.party) {
+            if ((result.status === 201 || result.status === 200) && result.body && result.body.party) {
+                sharePartyNameDraft = null;
                 enterCloudMode(result.body.party);
                 renderAll();
                 shareMessage = 'Link ready. Copy it and send it to your guests.';
@@ -3367,9 +3406,14 @@
                 loadHostParties();
                 return;
             }
-            shareMessage = result.status === 401 || result.status === 403
-                ? 'Your sign-in has expired. Sign out and back in, then try again.'
-                : partyErrorMessage(result);
+            if (result.status === 401 || result.status === 403) {
+                shareMessage = 'Your sign-in has expired. Sign out and back in, then try again.';
+            } else if (result.status === 0 || result.status >= 500) {
+                shareMessage = "The party database is still waking up. Give it a minute, then click Generate link again. If your party was created anyway, it's listed under Your parties below.";
+                loadHostParties();
+            } else {
+                shareMessage = partyErrorMessage(result);
+            }
             shareMessageIsError = true;
             renderSharePanel();
         }
@@ -3430,6 +3474,9 @@
         // the tab is hidden or nobody has touched the page for a while.
         const PARTY_POLL_MS = 45000;
         const PARTY_IDLE_STOP_MS = 20 * 60 * 1000;
+        // After this long, a load or save says the database is waking up
+        const SLOW_NOTICE_MS = 3000;
+        const SLOW_WAKE_NOTE = 'The party database naps when nobody is using it, so the first visit in a while has to wake it up. That can take up to a minute. Thanks for your patience!';
 
         const party = {
             id: null,            // set as soon as the URL has ?party=
@@ -3438,6 +3485,7 @@
             me: null,            // { playerId, editToken } remembered in this browser
             editing: false,
             busy: false,
+            slow: false,         // a join or edit is taking long enough to explain why
             loading: false,
             formError: '',
             notice: '',
@@ -3562,12 +3610,17 @@
             party.id = rawId.toLowerCase();
             party.me = loadMyEntry(party.id);
             renderPartyMessage('loading');
+            // A sleeping database makes the first load slow: say so instead of just "Loading"
+            const slowLoadTimer = setTimeout(() => {
+                if (party.id !== null && !party.data && party.status === 'loading') renderPartyMessage('waking');
+            }, SLOW_NOTICE_MS);
 
             // The party's own host gets the full organizer, unless they asked
             // for the guest view with &view=guest
             if (new URLSearchParams(window.location.search).get('view') !== 'guest') {
                 const hostParty = await loadPartyAsHost(party.id);
                 if (hostParty) {
+                    clearTimeout(slowLoadTimer);
                     party.id = null;
                     document.body.classList.remove('party-mode');
                     document.getElementById('partyPage').classList.add('hidden');
@@ -3582,6 +3635,7 @@
             });
 
             await refreshParty();
+            clearTimeout(slowLoadTimer);
         }
 
         // Any tap or key press counts as someone looking; it restarts paused refreshing
@@ -3722,14 +3776,22 @@
 
             const editing = party.editing && party.me;
             party.busy = true;
+            party.slow = false;
             party.formError = '';
             party.notice = '';
             renderPartyPage();
+            const slowTimer = setTimeout(() => {
+                if (!party.busy) return;
+                party.slow = true;
+                renderPartyPage();
+            }, SLOW_NOTICE_MS);
 
             const result = editing
                 ? await partyRequest('PUT', `/parties/${party.id}/players/${party.me.playerId}`, { ...values, editToken: party.me.editToken })
                 : await partyRequest('POST', `/parties/${party.id}/players`, values);
+            clearTimeout(slowTimer);
             party.busy = false;
+            party.slow = false;
 
             if ((result.status === 200 || result.status === 201) && result.body && result.body.player) {
                 if (!editing) {
@@ -3865,10 +3927,11 @@
                             <button type="submit" ${party.busy ? 'disabled' : ''}
                                 class="flex-1 py-2.5 bg-felt-600 hover:bg-felt-500 disabled:opacity-60 text-white font-medium text-sm rounded-lg shadow-md transition flex items-center justify-center gap-2">
                                 <i class="fa-solid ${party.busy ? 'fa-spinner fa-spin' : editing ? 'fa-check' : 'fa-plus'}"></i>
-                                ${party.busy ? 'Saving...' : editing ? 'Save changes' : 'Join the party'}
+                                ${party.busy ? (party.slow ? 'Waking up the database...' : 'Saving...') : editing ? 'Save changes' : 'Join the party'}
                             </button>
                             ${editing ? `<button type="button" onclick="cancelPartyEdit()" ${party.busy ? 'disabled' : ''} class="px-4 py-2.5 bg-stone-800 hover:bg-stone-700 text-stone-300 border border-stone-700 text-sm font-medium rounded-lg transition">Cancel</button>` : ''}
                         </div>
+                        ${party.busy && party.slow ? `<div class="rounded-lg px-3 py-2 text-amber-200 bg-amber-950/40 border border-amber-800/60 text-xs" role="status">${escapeHtml(SLOW_WAKE_NOTE)}</div>` : ''}
                         <p class="text-xs text-stone-500">Your name, experience, and dish are visible to anyone with this link.</p>
                     </form>
                 </div>`;
@@ -4020,7 +4083,7 @@
             const organizerLink = `<a href="${escapeHtml(organizerUrl())}" class="text-felt-300 hover:text-felt-200 underline underline-offset-2">Open the party organizer</a>`;
             const views = {
                 loading: { spinner: true, title: 'Loading the party...', text: '' },
-                waking: { spinner: true, title: 'Waking up the party server...', text: 'The first visit in a while can take up to a minute.' },
+                waking: { spinner: true, title: 'Waking up the party database...', text: SLOW_WAKE_NOTE },
                 notFound: { icon: 'fa-circle-question text-stone-500', title: "We couldn't find that party", text: 'Check that you copied the whole link. It ends with ?party= and a long code.', footer: `Planning your own game night? ${organizerLink}.` },
                 expired: {
                     icon: 'fa-hourglass-end text-amber-400',

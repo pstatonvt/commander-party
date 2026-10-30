@@ -65,7 +65,7 @@ All responses JSON. `{guid}` is the party id.
 
 | Method, route | Who | What | Status |
 |---|---|---|---|
-| `POST /api/host/parties` | host | Create a party from the organizer's current event and roster. Players get new GUIDs; the seating is rewritten to match and the old-to-new `idMap` is returned with the party. | Built (C) |
+| `POST /api/host/parties` | host | Create a party from the organizer's current event and roster. Players get new GUIDs; the seating is rewritten to match and the old-to-new `idMap` is returned with the party. The page sends its own party `id` (a GUID), so a retry of a create that already went through returns that party with `200` instead of making a duplicate; an id owned by another host gets `409 id_taken`. | Built (C) |
 | `GET /api/host/parties/{guid}` | host | Full party for its owner: saved state plus the roster, including who the host added. Never edit tokens. | Built (C) |
 | `PUT /api/host/parties/{guid}` | host | Autosave the event state and optionally the name. Does not touch players. | Built (C) |
 | `DELETE /api/host/parties/{guid}` | host | Delete a party and its players. | Built (C) |
@@ -190,7 +190,8 @@ swa start . --api-devserver-url http://localhost:7071
 
 - Requests with a malformed GUID or invalid body are rejected **before** connecting to SQL, so junk traffic never wakes a paused database.
 - A paused or resuming database returns `503` with `Retry-After: 30`; the front end should show "waking up, retrying" and retry.
-- A cold start can take longer than the roughly 45 seconds Static Web Apps waits for the API. Azure then answers `500` with the plain-text body `Backend call failure`, before the API can reply. This was seen on the first live request after deploying. The guest page retries reads on both, waiting 4, 10, 20, then 30 seconds. Writes retry only on `503`: after a gateway timeout the write may already have gone through, so the page asks the guest to refresh and check instead of joining twice.
+- A cold start can take longer than the roughly 45 seconds Static Web Apps waits for the API. Azure then answers `500` with the plain-text body `Backend call failure`, before the API can reply. This was seen on the first live request after deploying. The guest page retries reads on both, waiting 4, 10, 20, then 30 seconds. Writes retry only on `503`: after a gateway timeout the write may already have gone through, so the page asks the guest to refresh and check instead of joining twice. Generate link is the exception: because the page picks the party id, it retries after gateway timeouts and dropped connections too (after 5, 10, then 20 seconds), and any retry that lands after a successful first attempt gets the same party back.
+- Any first load, Generate link, or guest join that takes longer than 3 seconds swaps "Loading..." or "Saving..." for an explicit message: the party database naps when nobody is using it, the first visit in a while can take up to a minute to wake it, and thanks for your patience. Observed live: 15 seconds for a cold lookup and over 45 seconds for one cold create, then about 0.3 seconds once awake.
 - Join outcomes: `201` joined, `400` bad input, `404` unknown link, `409` party full or duplicate name (case-insensitive), `410` expired, `413` body too large, `415` not JSON, `429` rate-limited.
 - Guests cannot set partners. Locked pairs are a host action.
 

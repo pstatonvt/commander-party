@@ -209,6 +209,35 @@ test('createParty: defaults the name and reports the party cap', async () => {
     assert.equal(calls[1].inputs.name, 'Commander Party');
 });
 
+test('createParty: uses a page-chosen id, so a retry is safe', async () => {
+    nextResult = { recordsets: [[{ Outcome: 'ok' }], [partyRow()], []] };
+    await call(host.createParty, request({ body: { id: PARTY.toUpperCase(), state: {} } }));
+    assert.equal(calls[1].inputs.partyId, PARTY, 'page id is used, lower-cased');
+
+    calls = [];
+    const bad = await call(host.createParty, request({ body: { id: 'not-a-guid', state: {} } }));
+    assert.equal(bad.status, 400);
+    assert.equal(parse(bad).error.code, 'invalid_id');
+    assert.deepEqual(calls, [], 'bad id rejected before the database');
+});
+
+test('createParty: a retry of a create that went through returns the same party', async () => {
+    nextResult = { recordsets: [[{ Outcome: 'exists' }], [partyRow()], [{ Id: PLAYER, Name: 'Ajani', Experience: 'Veteran', Dish: '', PartnerId: null, AddedByHost: true }]] };
+    const res = await call(host.createParty, request({ body: { id: PARTY, state: {} } }));
+    assert.equal(res.status, 200);
+    const body = parse(res);
+    assert.equal(body.existing, true);
+    assert.equal(body.party.id, PARTY);
+    assert.equal(body.party.players.length, 1);
+});
+
+test('createParty: an id owned by another host is refused', async () => {
+    nextResult = { recordsets: [[{ Outcome: 'taken' }], [], []] };
+    const res = await call(host.createParty, request({ body: { id: PARTY, state: {} } }));
+    assert.equal(res.status, 409);
+    assert.equal(parse(res).error.code, 'id_taken');
+});
+
 // ---------- list / get / save / delete ----------
 
 test('listParties returns only the fields the picker needs', async () => {

@@ -122,14 +122,27 @@ WHERE Id = @partyId AND HostUserId = @hostUserId;`;
 // Creates a party from the organizer's current event. Players come with the
 // organizer's local ids; the API gives each a new GUID, rewrites the seating
 // and results to match, and returns the old-to-new id map.
+//
+// The page may choose the party's id itself (body.id). That makes creating
+// safe to retry: if a slow first attempt timed out at the gateway but still
+// finished, the retry finds the same id and gets the existing party back
+// instead of a duplicate.
 const CREATE_PARTY_SQL = `
 SET NOCOUNT ON;
 SET XACT_ABORT ON;
 DECLARE @now DATETIME2(0) = SYSUTCDATETIME();
 DECLARE @outcome VARCHAR(20);
+DECLARE @existingHost NVARCHAR(128);
 DECLARE @playerCount INT = (SELECT COUNT(*) FROM OPENJSON(@playersJson));
 
 BEGIN TRANSACTION;
+
+SELECT @existingHost = HostUserId FROM dbo.Parties WITH (UPDLOCK, HOLDLOCK) WHERE Id = @partyId;
+
+IF @existingHost IS NOT NULL
+    SET @outcome = CASE WHEN @existingHost = @hostUserId THEN 'exists' ELSE 'taken' END;
+ELSE
+BEGIN
 
 IF (SELECT COUNT(*) FROM dbo.Parties WITH (UPDLOCK, HOLDLOCK) WHERE HostUserId = @hostUserId) >= @maxParties
 BEGIN
@@ -159,6 +172,8 @@ BEGIN
     ) p;
 
     SET @outcome = 'ok';
+END
+
 END
 
 COMMIT TRANSACTION;
@@ -204,8 +219,11 @@ function readImportedPlayers(rawPlayers) {
 async function createParty(request, context, principal) {
     const body = await readJsonBody(request, limits.MAX_HOST_BODY_BYTES);
     if (!body.ok) return body.response;
-    const unknown = rejectUnknownKeys(body.value, ['name', 'state', 'players']);
+    const unknown = rejectUnknownKeys(body.value, ['id', 'name', 'state', 'players']);
     if (unknown) return unknown;
+
+    const partyId = body.value.id === undefined ? crypto.randomUUID() : normalizeGuid(body.value.id);
+    if (!partyId) return errorResponse(400, 'invalid_id', 'id must be a GUID.');
 
     const name = readPartyName(body.value);
     if (name === null) return errorResponse(400, 'invalid_name', `Party name must be text of at most ${limits.PARTY_NAME_MAX} characters.`);
@@ -219,7 +237,6 @@ async function createParty(request, context, principal) {
     const stateJson = serializeState(remapStateIds(cleaned.state, imported.idMap));
     if (!stateJson) return errorResponse(413, 'state_too_large', 'The saved event is too large.');
 
-    const partyId = crypto.randomUUID();
     const pool = await getPool();
     const result = await pool.request()
         .input('partyId', sql.UniqueIdentifier, partyId)
@@ -235,6 +252,13 @@ async function createParty(request, context, principal) {
     if (outcome === 'too_many') {
         return errorResponse(409, 'too_many_parties',
             `You already have ${limits.MAX_PARTIES_PER_HOST} parties that haven't expired. Delete one first.`);
+    }
+    if (outcome === 'taken') {
+        return errorResponse(409, 'id_taken', 'That party id is already in use. Try again.');
+    }
+    if (outcome === 'exists') {
+        // A retry of a create that already went through: hand back the same party
+        return json(200, { party: hostView(result.recordsets[1][0], result.recordsets[2]), idMap: {}, existing: true });
     }
     if (outcome !== 'ok') throw new Error(`Unexpected create outcome: ${outcome}`);
 
