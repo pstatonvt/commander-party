@@ -19,7 +19,7 @@ Live site: https://commanderparty.com
 ## Sharing a party
 
 1. Open the organizer and set up the event as usual.
-2. Hover the top-left corner and click **Generate link**, or tap **Share link** under the save badge. The first time on each device, enter the host password. It stays unlocked on that device for 30 days.
+2. Hover the top-left corner to slide out the **Generate link** tab, then click it to open the Share panel. On phones the tab sits at the left edge; tap it. The first time on each device, enter the host password. It stays unlocked on that device for 30 days.
 3. Name the party and click **Generate link**. Copy the link and send it to your guests.
 4. Guests open the link and add themselves. They show up in your roster, unseated, within about a minute. Seat them as usual. A guest who can't come anymore can tap **I can't make it** to take themselves off the list.
 

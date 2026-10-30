@@ -248,11 +248,6 @@
         @media (max-width: 639px), (pointer: coarse) {
             input, select, textarea { font-size: 16px !important; }
         }
-        /* Phones: the left-edge tab would cover the header's Share link
-           button, which does the same job, so it's hidden. */
-        @media (max-width: 639px) {
-            .drawer-tab, .drawer-tab-zone { display: none !important; }
-        }
         .party-spinner {
             width: 2.5rem;
             height: 2.5rem;
@@ -291,15 +286,10 @@
             </div>
 
             <div class="flex items-start justify-center lg:justify-end gap-2 flex-wrap">
-                <!-- Autosave indicator badge, with the Share link button beneath it -->
-                <div class="flex flex-col items-stretch gap-2">
-                    <div id="saveStatus" class="hidden sm:flex items-center gap-1.5 px-3 py-1.5 mt-0.5 rounded-lg bg-stone-900 border border-stone-800 text-xs text-stone-400 font-medium transition-all duration-300">
-                        <i id="saveStatusIcon" class="fa-solid fa-cloud text-stone-500"></i>
-                        <span id="saveStatusText">Saved</span>
-                    </div>
-                    <button id="partyLinkBtn" type="button" onclick="openSharePanel()" class="px-3 py-1.5 bg-felt-950 hover:bg-felt-900 text-felt-200 border border-felt-800 font-medium text-xs rounded-lg flex items-center justify-center gap-1.5 transition" title="Make a link guests can use to add themselves">
-                        <i class="fa-solid fa-share-nodes"></i> <span id="partyLinkBtnLabel">Share link</span>
-                    </button>
+                <!-- Autosave indicator badge -->
+                <div id="saveStatus" class="hidden sm:flex items-center gap-1.5 px-3 py-1.5 mt-0.5 rounded-lg bg-stone-900 border border-stone-800 text-xs text-stone-400 font-medium transition-all duration-300">
+                    <i id="saveStatusIcon" class="fa-solid fa-cloud text-stone-500"></i>
+                    <span id="saveStatusText">Saved</span>
                 </div>
 
                 <!-- Hat Draw, with the Tournament Mode switch beneath it -->
@@ -747,15 +737,15 @@
         </button>
     </div>
 
-    <!-- Share panel: slides out from the left edge (hover the tab, or tap it or the Share link button) -->
+    <!-- Share panel: hovering the left edge slides the tab out; clicking or tapping the tab opens the panel -->
     <div class="drawer-tab-zone fixed left-0 top-0 w-8 h-52 z-40" aria-hidden="true"></div>
-    <button id="linkDrawerTab" type="button" onclick="openSharePanel()" onmouseenter="openSharePanel({ hover: true })" onmouseleave="closeSharePanelSoon()" aria-controls="linkDrawer" aria-expanded="false"
+    <button id="linkDrawerTab" type="button" onclick="openSharePanel()" aria-controls="linkDrawer" aria-expanded="false" title="Make a link guests can use to add themselves"
         class="drawer-tab fixed left-0 top-28 z-40 flex items-center gap-2 pl-2 pr-3 py-2.5 bg-felt-700 hover:bg-felt-600 text-white text-xs font-semibold rounded-r-xl border border-l-0 border-felt-500 shadow-lg">
         <i class="fa-solid fa-link"></i> <span id="linkDrawerTabLabel">Generate link</span>
     </button>
     <div id="linkDrawerBackdrop" class="fixed inset-0 z-40 bg-black/40 hidden" onclick="closeSharePanel()"></div>
     <aside id="linkDrawer" class="link-drawer fixed left-0 top-0 bottom-0 z-50 w-[22rem] max-w-[92vw] bg-mtg-card border-r border-mtg-border shadow-2xl overflow-y-auto"
-        onmouseleave="closeSharePanelSoon()" onmouseenter="cancelSharePanelClose()" onpointerdown="pinSharePanel()" aria-label="Share this party" aria-hidden="true">
+        aria-label="Share this party" aria-hidden="true">
         <div class="flex items-center justify-between px-5 py-4 border-b border-mtg-border">
             <h2 class="text-base font-semibold text-white flex items-center gap-2"><i class="fa-solid fa-share-nodes text-felt-400"></i> Share this party</h2>
             <button type="button" onclick="closeSharePanel()" class="text-stone-400 hover:text-white p-1" aria-label="Close"><i class="fa-solid fa-xmark text-lg"></i></button>
@@ -2819,7 +2809,6 @@
         let shareBusy = false;
         let shareSlow = false;          // Generate link is taking a while: show the patience note
         let sharePartyNameDraft = null; // what's typed in the party name box, kept across redraws
-        let sharePanelCloseTimer = null;
         let toastTimer = null;
 
         // One attempt, no retries; saves handle their own retrying
@@ -3165,26 +3154,18 @@
 
         function renderShareLabels() {
             document.getElementById('linkDrawerTabLabel').innerText = cloud.active ? 'Party link' : 'Generate link';
-            document.getElementById('partyLinkBtnLabel').innerText = cloud.active ? 'Party link' : 'Share link';
         }
 
         function sharePanelOpen() {
             return document.getElementById('linkDrawer').classList.contains('open');
         }
 
-        // Hovering the tab peeks the panel open without dimming the page; it
-        // closes again when the pointer moves away. A click or tap pins it
-        // open and dims the page behind it until it's closed.
-        let sharePanelPinned = false;
-
-        function openSharePanel(options = {}) {
-            cancelSharePanelClose();
-            if (!options.hover && !sharePanelPinned) {
-                sharePanelPinned = true;
-                document.getElementById('linkDrawerBackdrop').classList.remove('hidden');
-            }
+        // The panel opens only on a click or tap of the tab, and dims the page
+        // behind it until it's closed
+        function openSharePanel() {
             if (sharePanelOpen()) return;
             const panel = document.getElementById('linkDrawer');
+            document.getElementById('linkDrawerBackdrop').classList.remove('hidden');
             panel.classList.add('open');
             panel.setAttribute('aria-hidden', 'false');
             document.getElementById('linkDrawerTab').setAttribute('aria-expanded', 'true');
@@ -3196,40 +3177,13 @@
             });
         }
 
-        // Clicking inside a hover-opened panel means it's in use: keep it open and dim the page
-        function pinSharePanel() {
-            if (!sharePanelOpen() || sharePanelPinned) return;
-            cancelSharePanelClose();
-            sharePanelPinned = true;
-            document.getElementById('linkDrawerBackdrop').classList.remove('hidden');
-        }
-
         function closeSharePanel() {
-            cancelSharePanelClose();
             const panel = document.getElementById('linkDrawer');
             panel.classList.remove('open');
             panel.setAttribute('aria-hidden', 'true');
             document.getElementById('linkDrawerTab').setAttribute('aria-expanded', 'false');
             document.getElementById('linkDrawerBackdrop').classList.add('hidden');
-            sharePanelPinned = false;
             shareMessage = '';
-        }
-
-        // Hover-opened panels close when the pointer leaves, unless they were
-        // pinned by a click or something inside has focus
-        function closeSharePanelSoon() {
-            cancelSharePanelClose();
-            if (sharePanelPinned) return;
-            sharePanelCloseTimer = setTimeout(() => {
-                if (sharePanelPinned) return;
-                const panel = document.getElementById('linkDrawer');
-                if (!panel.contains(document.activeElement)) closeSharePanel();
-            }, 600);
-        }
-
-        function cancelSharePanelClose() {
-            clearTimeout(sharePanelCloseTimer);
-            sharePanelCloseTimer = null;
         }
 
         async function loadHostParties() {
