@@ -1,0 +1,12 @@
+{
+  "name": "commander-party-css",
+  "version": "1.0.0",
+  "private": true,
+  "description": "Builds app.css from the Tailwind classes used in index.html. Run after changing classes in the page.",
+  "scripts": {
+    "build": "tailwindcss -c tailwind.config.js -i input.css -o ../../app.css --minify"
+  },
+  "devDependencies": {
+    "tailwindcss": "3.4.19"
+  }
+}

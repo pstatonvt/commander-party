@@ -30,7 +30,7 @@ db.getPool = async () => {
     };
 };
 
-const { getParty, joinParty, updateMyPlayer } = require('../src/functions/parties');
+const { getParty, joinParty, updateMyPlayer, leaveParty } = require('../src/functions/parties');
 const { withDb } = require('../src/lib/db');
 
 const PARTY = '0f8fad5b-d9cb-469f-a165-70867728950e';
@@ -189,4 +189,27 @@ test('other failures become a generic 500 that leaks nothing', async () => {
     const res = await call(getParty, request({ params: { partyId: PARTY } }));
     assert.equal(res.status, 500);
     assert.ok(!res.body.includes('secret-server'));
+});
+
+// ---------- leaveParty ----------
+
+test('leaveParty: needs the edit token, checked before the database', async () => {
+    let res = await call(leaveParty, request({ params: { partyId: PARTY, playerId: PLAYER }, body: {} }));
+    assert.equal(res.status, 400);
+    res = await call(leaveParty, request({ params: { partyId: PARTY, playerId: PLAYER }, body: { editToken: TOKEN, name: 'x' } }));
+    assert.equal(res.status, 400);
+    res = await call(leaveParty, request({ params: { partyId: 'bad', playerId: PLAYER }, body: { editToken: TOKEN } }));
+    assert.equal(res.status, 404);
+    assert.deepEqual(calls, []);
+});
+
+test('leaveParty: right token removes the guest; anything else is a plain 404', async () => {
+    nextResult = { recordset: [{ Outcome: 'ok' }] };
+    let res = await call(leaveParty, request({ params: { partyId: PARTY, playerId: PLAYER }, body: { editToken: TOKEN.toUpperCase() } }));
+    assert.equal(res.status, 204);
+    assert.equal(calls[1].inputs.editToken, TOKEN);
+
+    nextResult = { recordset: [{ Outcome: 'not_found' }] };
+    res = await call(leaveParty, request({ params: { partyId: PARTY, playerId: PLAYER }, body: { editToken: TOKEN } }));
+    assert.equal(res.status, 404);
 });

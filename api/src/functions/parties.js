@@ -226,6 +226,61 @@ async function updateMyPlayer(request, context) {
     }
 }
 
+// ---------- DELETE /api/parties/{partyId}/players/{playerId} ----------
+
+// A guest takes themselves off the list ("I can't make it"). Like editing, it
+// needs the guest's own edit token, and a wrong token, a wrong player, or an
+// expired party all look the same: 404. A locked partner is freed.
+const LEAVE_SQL = `
+SET NOCOUNT ON;
+SET XACT_ABORT ON;
+DECLARE @now DATETIME2(0) = SYSUTCDATETIME();
+DECLARE @expiresAt DATETIME2(0);
+DECLARE @outcome VARCHAR(20);
+
+BEGIN TRANSACTION;
+
+SELECT @expiresAt = ExpiresAt FROM dbo.Parties WITH (UPDLOCK, HOLDLOCK) WHERE Id = @partyId;
+
+IF @expiresAt IS NULL OR @expiresAt <= @now
+   OR NOT EXISTS (SELECT 1 FROM dbo.Players
+                  WHERE Id = @playerId AND PartyId = @partyId AND EditToken = @editToken)
+    SET @outcome = 'not_found';
+ELSE
+BEGIN
+    UPDATE dbo.Players SET PartnerId = NULL, UpdatedAt = @now WHERE PartyId = @partyId AND PartnerId = @playerId;
+    DELETE FROM dbo.Players WHERE Id = @playerId AND PartyId = @partyId;
+    SET @outcome = 'ok';
+END
+
+COMMIT TRANSACTION;
+
+SELECT @outcome AS Outcome;`;
+
+async function leaveParty(request, context) {
+    const partyId = normalizeGuid(request.params.partyId);
+    const playerId = normalizeGuid(request.params.playerId);
+    if (!partyId || !playerId) return notFound();
+
+    const body = await readJsonBody(request, limits.MAX_GUEST_BODY_BYTES);
+    if (!body.ok) return body.response;
+    const unknown = Object.keys(body.value).filter(key => key !== 'editToken');
+    if (unknown.length) return errorResponse(400, 'invalid_body', `Unknown field: ${unknown[0].slice(0, 40)}.`);
+    const editToken = normalizeGuid(body.value.editToken);
+    if (!editToken) return errorResponse(400, 'invalid_player', 'editToken is required.');
+
+    const pool = await getPool();
+    const result = await pool.request()
+        .input('partyId', sql.UniqueIdentifier, partyId)
+        .input('playerId', sql.UniqueIdentifier, playerId)
+        .input('editToken', sql.UniqueIdentifier, editToken)
+        .query(LEAVE_SQL);
+
+    return result.recordset[0].Outcome === 'ok'
+        ? { status: 204, headers: { 'Cache-Control': 'no-store' } }
+        : errorResponse(404, 'not_found', 'No matching player for this link.');
+}
+
 // ---------- Registration ----------
 
 app.http('getParty', {
@@ -249,4 +304,11 @@ app.http('updateMyPlayer', {
     handler: withDb(updateMyPlayer)
 });
 
-module.exports = { getParty, joinParty, updateMyPlayer, GET_PARTY_SQL, JOIN_SQL, UPDATE_PLAYER_SQL };
+app.http('leaveParty', {
+    methods: ['DELETE'],
+    authLevel: 'anonymous',
+    route: 'parties/{partyId}/players/{playerId}',
+    handler: withDb(leaveParty)
+});
+
+module.exports = { getParty, joinParty, updateMyPlayer, leaveParty, GET_PARTY_SQL, JOIN_SQL, UPDATE_PLAYER_SQL, LEAVE_SQL };

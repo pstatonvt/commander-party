@@ -79,6 +79,7 @@ All responses JSON. `{guid}` is the party id.
 | `GET /api/parties/{guid}` | anyone with the link | Public view: party name, players (no edit tokens), current round seating, potluck list, `expiresAt`. 404 if unknown, 410 if expired. | Built (B) |
 | `POST /api/parties/{guid}/players` | anyone with the link | Guest joins. Returns the player plus their `editToken`. | Built (B) |
 | `PUT /api/parties/{guid}/players/{id}` | guest with matching `editToken` | Guest edits their own entry. | Built (B) |
+| `DELETE /api/parties/{guid}/players/{id}` | guest with matching `editToken` (JSON body) | Guest takes themselves off the list ("I can't make it"); a locked partner is freed. Wrong token, wrong player, or expired party all give 404. | Built |
 | `POST /api/maintenance/purge` | GitHub Actions schedule, `x-purge-secret` header | Delete parties more than 30 days past `ExpiresAt` (players go with them) and join-rate-limit records older than an hour or for deleted parties. Returns the counts. A wrong or missing secret gets the same 404 as an unknown route, before the database is touched, and a `PURGE_SECRET` shorter than 16 characters turns the route off. Not under `/api/admin` because Azure Functions reserves routes starting with `admin`. Managed Functions only allow HTTP triggers, so the schedule lives in a GitHub workflow. | Built (F) |
 
 Each function validates and trims input, rejects unknown fields, checks the caps above, and talks to SQL through parameterised queries (`mssql` package). Host access comes from the signed session cookie and admin identity from the `x-ms-client-principal` header SWA injects, never from the body.
@@ -211,7 +212,26 @@ swa start . --api-devserver-url http://localhost:7071
 - Two devices autosaving the same party: the last save wins. That's fine for one host; revisit if parties ever get co-hosts.
 - `npm audit` reports a high-severity advisory in `@azure/msal-node`, pulled in by `mssql` > `tedious` > `@azure/identity`. It affects the Entra ID authorization-code flow, which this API never uses (it signs in with a SQL password), and no compatible fix is published yet. Re-run `npm audit` before deploying.
 
-## 8. Costs, worst case
+## 8. Hardening after step F
+
+**Done in code**
+
+- **No styling code from other sites.** Tailwind classes are compiled ahead of time into `app.css` by `tools/tailwind` (Tailwind 3.4.19), replacing the Tailwind CDN script, which loaded whatever its latest version was and isn't meant for production. `.github/workflows/check-css.yml` fails if `app.css` is out of date with `index.html`. `app.css` is on the routing allow-list.
+- **Pinned outside files with integrity checks.** Font Awesome 6.4.0 (cdnjs) and canvas-confetti 1.6.0 (jsDelivr) carry `integrity` hashes, so the browser refuses an altered file. The Font Awesome hash matches the one cdnjs publishes.
+- **Content security policy** (`staticwebapp.config.json`). Scripts only from this site and jsDelivr; styles from this site, cdnjs, and Google Fonts; fonts from cdnjs and Google; images from this site and inline `data:` (the favicon); `connect-src 'self'`, so page code can't send data to other sites; `worker-src blob:` for the confetti animation; framing, `<base>` changes, plugins, and off-site form posts blocked. `'unsafe-inline'` is still needed for scripts because the page's code and its `onclick` handlers are inline; moving them into a file would let that be dropped later. Verified in a browser with the real header: no blocked resources, icons and fonts load, confetti runs.
+- **Permissions policy** turns off camera, microphone, location, payments, USB, Bluetooth, serial, HID, and MIDI. Fullscreen and screen wake lock stay on for Show Seating.
+- **Dependabot** (`.github/dependabot.yml`) checks the API and Tailwind packages weekly and GitHub Actions monthly, and opens a pull request when something needs updating. Tailwind major versions are ignored, because version 4 is a rewrite.
+- **Guests can leave a party** with **I can't make it**, and **hosts can rename a party** from the Share panel (the autosave route already accepted a name). The host party list says that everyone with the host password sees the same parties.
+- **Phones and tablets.** On touch screens, form fields use 16px text so iOS Safari doesn't zoom in when one is tapped. On phones the left-edge tab is hidden, because it covered the header's Share link button, which does the same job. Show Seating's timer controls now wrap on narrow screens; before, the close button was pushed off-screen on phones. Checked at 375 px and 768 px wide: nothing wider than the screen, and dialogs, the Share panel, and Show Seating fit. The 16px rule on real touch tablets wasn't checked, because the test browser doesn't simulate a touch screen at tablet size.
+
+**Portal steps (only the owner can do these)**
+
+1. **Turn on host sign-in.** Static Web App > Settings > Environment variables: add `HOST_PASSWORD` and `HOST_SESSION_SECRET` (see section 6, step 9). Until both exist, hosts can't generate links.
+2. **Alert before the free database runs out.** SQL database `commanderparty` > Monitoring > Alerts > Create > Alert rule. Signal: **Free amount remaining** (vCore seconds). Condition: less than 20000 (20% of the monthly 100,000). Action: email yourself. If the allowance runs out, the database pauses and the site is down until the next month.
+3. **See API errors and slow starts.** Static Web App > Settings > Application Insights > **Enable**, then Save. This creates a free-tier Application Insights resource; failed requests and cold-start times appear under its Failures and Performance pages. `api/host.json` already samples requests so it stays within the free amount.
+4. **Hear about failed cleanup runs.** GitHub > your profile > Settings > Notifications > System > Actions: choose email for failed workflows. The weekly purge job notifies whoever last changed its schedule.
+
+## 9. Costs, worst case
 
 | Resource | Plan | Normal cost | Worst case |
 |---|---|---|---|

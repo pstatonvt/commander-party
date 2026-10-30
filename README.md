@@ -21,7 +21,9 @@ Live site: https://commanderparty.com
 1. Open the organizer and set up the event as usual.
 2. Hover the top-left corner and click **Generate link**, or tap **Share link** under the save badge. The first time on each device, enter the host password. It stays unlocked on that device for 30 days.
 3. Name the party and click **Generate link**. Copy the link and send it to your guests.
-4. Guests open the link and add themselves. They show up in your roster, unseated, within about a minute. Seat them as usual.
+4. Guests open the link and add themselves. They show up in your roster, unseated, within about a minute. Seat them as usual. A guest who can't come anymore can tap **I can't make it** to take themselves off the list.
+
+To rename a shared party, open the Share panel and use the name box at the top.
 
 The shared party saves to the cloud, so you can open the same link on another unlocked device and pick up where you left off. Only the site admin can delete a party: the Share panel has an **Admin sign-in** link for the admin's GitHub account. The event saved in your browser isn't changed. Links stop working 60 days after they're made. Import and Clear All Data only work on the event saved in your browser, so they're turned off while a shared party is open.
 
@@ -43,7 +45,9 @@ The design, security model, and setup steps are in [docs/azure-plan.md](docs/azu
 
 | Path | What it is |
 |---|---|
-| `index.html` | The whole front end: markup, styles, and script in one file |
+| `index.html` | The whole front end: markup, page-specific styles, and script in one file |
+| `app.css` | Tailwind styles built from the classes in `index.html`. Don't edit by hand; rebuild it (below) |
+| `tools/tailwind/` | The Tailwind build settings that produce `app.css` |
 | `api/` | Azure Functions API (Node.js 22) for shareable parties |
 | `db/` | SQL Server scripts for the database schema and the API's limited database user |
 | `docs/` | Architecture, security, and deployment notes |
@@ -52,7 +56,11 @@ The design, security model, and setup steps are in [docs/azure-plan.md](docs/azu
 
 ## Running it locally
 
-The organizer has no build step. Open `index.html` in a browser.
+The organizer has no build step for running it: open `index.html` in a browser. After adding or changing Tailwind classes in `index.html`, rebuild `app.css` and commit it. A check on GitHub fails if you forget.
+
+```bash
+cd tools/tailwind && npm install && npm run build
+```
 
 To run the API tests:
 
@@ -72,6 +80,6 @@ The tests use a fake database. Running the API itself needs a SQL Server databas
 
 ## Security
 
-Party links are unguessable random IDs. Only hosts, who unlock with a shared host password, can make parties or change a party's seating and settings. The password is kept only on the server, never in this code. Only the admin, signed in with GitHub, can delete parties. Wrong host-password guesses are limited per visitor and overall. The API caps players per party, limits how often one visitor can join, rejects oversized or malformed requests, and never returns other guests' edit tokens. The full model, including its limits, is in [docs/azure-plan.md](docs/azure-plan.md).
+Party links are unguessable random IDs. Only hosts, who unlock with a shared host password, can make parties or change a party's seating and settings. The password is kept only on the server, never in this code. Only the admin, signed in with GitHub, can delete parties. Wrong host-password guesses are limited per visitor and overall. The API caps players per party, limits how often one visitor can join, rejects oversized or malformed requests, and never returns other guests' edit tokens. The page loads no styling code from other sites, checks the two outside files it does load against fixed fingerprints, and runs under a content security policy that blocks sending data anywhere but this site. Dependabot watches the dependencies weekly. The full model, including its limits, is in [docs/azure-plan.md](docs/azure-plan.md).
 
 If you find a security problem, please contact the maintainer through their GitHub profile instead of opening a public issue.

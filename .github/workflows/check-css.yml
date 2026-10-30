@@ -1,0 +1,35 @@
+# Fails a push or pull request when app.css is out of date with the Tailwind
+# classes in index.html. Fix: cd tools/tailwind && npm ci && npm run build,
+# then commit app.css.
+
+name: Check app.css is built
+
+on:
+  push:
+    paths: [index.html, app.css, "tools/tailwind/**"]
+  pull_request:
+    paths: [index.html, app.css, "tools/tailwind/**"]
+
+permissions:
+  contents: read
+
+jobs:
+  check:
+    runs-on: ubuntu-latest
+    timeout-minutes: 5
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 22
+      - name: Rebuild app.css
+        working-directory: tools/tailwind
+        run: npm ci && npm run build
+      - name: Compare with the committed file
+        run: |
+          if ! git diff --quiet -- app.css; then
+            echo "::error::app.css is out of date. Run: cd tools/tailwind && npm ci && npm run build, then commit app.css."
+            git diff --stat -- app.css
+            exit 1
+          fi
+          echo "app.css is up to date."

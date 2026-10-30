@@ -6,48 +6,14 @@
     <meta name="robots" content="noindex, nofollow, noarchive">
     <title>Commander Party Organizer</title>
     <link rel="icon" type="image/svg+xml" href="data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 64 64'%3E%3Crect width='64' height='64' rx='14' fill='%23275a4a'/%3E%3Cg fill='none' stroke='%23f1e7d0' stroke-width='3.5' stroke-linejoin='round' stroke-linecap='round'%3E%3Cpath d='M32 9 52 20.5v23L32 55 12 43.5v-23z'/%3E%3Cpath d='M32 20 44 41H20z'/%3E%3Cpath d='M32 9v11M52 20.5 44 41M12 20.5 20 41M32 55 20 41M32 55l12-14M12 20.5 32 20l20 .5M12 43.5l8-2.5M52 43.5l-8-2.5'/%3E%3C/g%3E%3C/svg%3E">
-    <!-- Tailwind CSS -->
-    <script src="https://cdn.tailwindcss.com"></script>
-    <!-- FontAwesome Icons -->
-    <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.4.0/css/all.min.css">
-    <!-- Canvas Confetti for Hat Draw celebration -->
-    <script src="https://cdn.jsdelivr.net/npm/canvas-confetti@1.6.0/dist/confetti.browser.min.js"></script>
-    <script>
-        tailwind.config = {
-            darkMode: 'class',
-            theme: {
-                extend: {
-                    colors: {
-                        felt: {
-                            50: '#eef6f3',
-                            100: '#d5e9e1',
-                            200: '#acd3c4',
-                            300: '#7db8a3',
-                            400: '#5aa48b',
-                            500: '#3f8a71',
-                            600: '#2f705b',
-                            700: '#275a4a',
-                            800: '#21483c',
-                            900: '#1b3b31',
-                            950: '#0e211b'
-                        },
-                        mtg: {
-                            bg: '#15130f',
-                            card: '#211e1a',
-                            border: '#37322c',
-                            accent: '#3f8a71',
-                            gold: '#f59e0b',
-                            manaW: '#f8fafc',
-                            manaU: '#3b82f6',
-                            manaB: '#6b7280',
-                            manaR: '#ef4444',
-                            manaG: '#22c55e'
-                        }
-                    }
-                }
-            }
-        }
-    </script>
+    <!-- Font Awesome icons and the confetti library come from pinned CDN
+         versions; integrity hashes make the browser refuse altered files. -->
+    <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.4.0/css/all.min.css"
+        integrity="sha512-iecdLmaskl7CVkqkXNQ/ZH/XLlvWZOJyj7Yy7tcenmpD1ypASozpmT/E0iPtmFIB46ZmdtAc9eNBvH0H/ZpiBw=="
+        crossorigin="anonymous" referrerpolicy="no-referrer">
+    <script src="https://cdn.jsdelivr.net/npm/canvas-confetti@1.6.0/dist/confetti.browser.min.js"
+        integrity="sha512-zT0ICbCP9FvtkNA1dsPyGK5HkLUe47KbE2BF2aUeN+jQFBYPfIaYohOGnEEwxMk9vLL+bLEdFs/xDxUY/2CLIw=="
+        crossorigin="anonymous" referrerpolicy="no-referrer"></script>
     <style>
         @import url('https://fonts.googleapis.com/css2?family=Fraunces:opsz,wght@9..144,500;9..144,600;9..144,700&family=Inter:wght@300;400;500;600;700&display=swap');
         :root {
@@ -276,6 +242,17 @@
         @media (prefers-reduced-motion: reduce) {
             .drawer-tab { transition: none; }
         }
+
+        /* Touch screens: form text under 16px makes iOS Safari zoom in when a
+           field is tapped, so fields use 16px on phones and tablets. */
+        @media (max-width: 639px), (pointer: coarse) {
+            input, select, textarea { font-size: 16px !important; }
+        }
+        /* Phones: the left-edge tab would cover the header's Share link
+           button, which does the same job, so it's hidden. */
+        @media (max-width: 639px) {
+            .drawer-tab, .drawer-tab-zone { display: none !important; }
+        }
         .party-spinner {
             width: 2.5rem;
             height: 2.5rem;
@@ -291,6 +268,8 @@
             .party-spinner { animation-duration: 3s; }
         }
     </style>
+    <!-- Tailwind styles, built ahead of time by tools/tailwind -->
+    <link rel="stylesheet" href="app.css">
 </head>
 <body class="min-h-screen flex flex-col justify-between antialiased">
 
@@ -707,9 +686,9 @@
                         <button id="displayPrev" onclick="displayRoundStep(-1)" class="disp-icon-btn" title="Previous round">
                             <i class="fa-solid fa-chevron-left"></i>
                         </button>
-                        <h2 class="font-display text-5xl sm:text-6xl font-semibold text-stone-50 leading-none">
+                        <h2 class="font-display text-4xl sm:text-6xl font-semibold text-stone-50 leading-none">
                             <span id="displayTitle">Round 1</span>
-                            <span id="displayOf" class="font-sans text-xl sm:text-2xl font-medium text-stone-500 align-baseline"></span>
+                            <span id="displayOf" class="font-sans text-xl sm:text-2xl font-medium text-stone-500 align-baseline whitespace-nowrap"></span>
                         </h2>
                         <button id="displayNext" onclick="displayRoundStep(1)" class="disp-icon-btn" title="Next round">
                             <i class="fa-solid fa-chevron-right"></i>
@@ -717,7 +696,7 @@
                     </div>
                 </div>
 
-                <div class="flex items-center gap-4 sm:gap-5">
+                <div class="flex items-center gap-4 sm:gap-5 flex-wrap max-w-full">
                     <div class="relative w-28 h-28 sm:w-32 sm:h-32 shrink-0">
                         <svg viewBox="0 0 120 120" class="w-full h-full -rotate-90" aria-hidden="true">
                             <circle cx="60" cy="60" r="52" fill="none" stroke="#2b2722" stroke-width="8"/>
@@ -728,9 +707,9 @@
                             <span id="dispTimerDigits" class="text-2xl sm:text-3xl font-semibold tabular-nums text-stone-50">60:00</span>
                         </div>
                     </div>
-                    <div class="flex flex-col gap-2">
+                    <div class="flex flex-col gap-2 min-w-0">
                         <span id="dispTimerStatus" class="text-sm text-stone-400">Ready</span>
-                        <div class="flex items-center gap-2">
+                        <div class="flex items-center gap-2 flex-wrap">
                             <button id="dispTimerToggle" onclick="toggleRoundTimer()" class="h-11 px-4 rounded-xl bg-felt-600 hover:bg-felt-500 text-white font-semibold text-sm flex items-center gap-2 transition">
                                 <i class="fa-solid fa-play"></i> Start round
                             </button>
@@ -3365,10 +3344,14 @@
             const expires = formatPartyDate(cloud.expiresAt);
             return `
                 <div class="space-y-3">
-                    <div>
-                        <div class="text-xs text-stone-400">Shared party</div>
-                        <div class="font-display text-xl font-semibold text-white break-words">${escapeHtml(cloud.name)}</div>
-                    </div>
+                    <form onsubmit="renameCloudParty(event)">
+                        <label for="renamePartyInput" class="block text-xs text-stone-400 mb-1">Shared party name</label>
+                        <div class="flex gap-2">
+                            <input type="text" id="renamePartyInput" maxlength="80" value="${escapeHtml(cloud.name)}"
+                                class="flex-1 min-w-0 bg-stone-900/90 border border-stone-700 rounded-lg px-3 py-2 text-base sm:text-sm text-white focus:outline-none focus:border-felt-500 focus:ring-1 focus:ring-felt-500">
+                            <button type="submit" class="px-3 py-2 bg-stone-800 hover:bg-stone-700 text-stone-200 border border-stone-700 text-xs font-semibold rounded-lg transition">Rename</button>
+                        </div>
+                    </form>
                     <div>
                         <label for="guestLinkInput" class="block text-xs font-medium text-stone-400 mb-1">Guest link</label>
                         <div class="flex gap-2">
@@ -3403,7 +3386,8 @@
             }).join('');
             return `
                 <div class="pt-4 border-t border-mtg-border">
-                    <h3 class="text-xs font-semibold uppercase tracking-wider text-stone-400 mb-2">Host parties <span class="text-stone-500 normal-case tracking-normal font-normal">(${list.length} of ${hostParties.limit})</span></h3>
+                    <h3 class="text-xs font-semibold uppercase tracking-wider text-stone-400 mb-1">Host parties <span class="text-stone-500 normal-case tracking-normal font-normal">(${list.length} of ${hostParties.limit})</span></h3>
+                    <p class="text-[11px] text-stone-500 mb-2">Everyone with the host password sees these parties.</p>
                     <ul class="space-y-1.5">${rows}</ul>
                 </div>`;
         }
@@ -3500,6 +3484,35 @@
             } catch {
                 // Cancelled or unsupported
             }
+        }
+
+        // Rename the open shared party. The autosave route takes an optional name.
+        async function renameCloudParty(e) {
+            e.preventDefault();
+            const input = document.getElementById('renamePartyInput');
+            const name = input ? input.value.trim() : '';
+            if (!name) {
+                showToast('Give the party a name first');
+                return;
+            }
+            if (name === cloud.name) return;
+            const result = await partyRequest('PUT', `/host/parties/${cloud.partyId}`, { name, state: cloudStateSnapshot() });
+            if (result.status === 200 && result.body) {
+                cloud.name = name;
+                cloud.updatedAt = result.body.updatedAt;
+                document.title = `${name} - Commander Party (host)`;
+                showToast('Party renamed');
+                renderSharePanel();
+                loadHostParties();
+                return;
+            }
+            if (result.status === 401) {
+                cloud.problem = 'signin';
+                setCloudBadge();
+                hostAuth.isHost = false;
+                renderSharePanel();
+            }
+            alert(partyErrorMessage(result));
         }
 
         // Unlock hosting with the shared password. The API sets a session cookie.
@@ -3984,6 +3997,35 @@
             renderPartyPage();
         }
 
+        // A guest takes themselves off the list, using their own edit token
+        async function leavePartyAsGuest() {
+            if (party.busy || !party.me) return;
+            if (!confirm('Take yourself off the list for this party? You can join again later with this link.')) return;
+            party.busy = true;
+            party.formError = '';
+            party.notice = '';
+            renderPartyPage();
+            const result = await partyRequest('DELETE', `/parties/${party.id}/players/${party.me.playerId}`, { editToken: party.me.editToken });
+            party.busy = false;
+            if (result.status === 204 || result.status === 404) {
+                saveMyEntry(party.id, null);
+                party.me = null;
+                party.editing = false;
+                party.draft = null;
+                party.notice = "You're off the list. If your plans change, join again below.";
+                await refreshParty();
+                return;
+            }
+            if (result.status === 410) {
+                stopPartyPoll();
+                party.status = 'expired';
+                renderPartyMessage('expired', result.body && result.body.expiresAt);
+                return;
+            }
+            party.formError = partyErrorMessage(result);
+            renderPartyPage();
+        }
+
         // ---------- Party page: rendering ----------
 
         const partyCard = 'bg-mtg-card border border-mtg-border rounded-xl p-5 shadow-sm';
@@ -4036,8 +4078,11 @@
                             ${me.dish ? `<div class="mt-1 text-sm text-amber-400/90"><i class="fa-solid fa-utensils text-xs mr-1.5"></i>${escapeHtml(me.dish)}</div>` : '<div class="mt-1 text-sm text-stone-500">No dish listed</div>'}
                             ${partner ? `<div class="mt-1 text-xs text-sky-300/90"><i class="fa-solid fa-link text-[10px] mr-1"></i>Seated with ${escapeHtml(partner.name)}</div>` : ''}
                         </div>
-                        <button type="button" onclick="startPartyEdit()" class="mt-4 w-full py-2.5 bg-stone-800 hover:bg-stone-700 text-stone-200 border border-stone-700 font-medium text-sm rounded-lg flex items-center justify-center gap-2 transition">
+                        <button type="button" onclick="startPartyEdit()" ${party.busy ? 'disabled' : ''} class="mt-4 w-full py-2.5 bg-stone-800 hover:bg-stone-700 disabled:opacity-60 text-stone-200 border border-stone-700 font-medium text-sm rounded-lg flex items-center justify-center gap-2 transition">
                             <i class="fa-solid fa-pen"></i> Edit my entry
+                        </button>
+                        <button type="button" onclick="leavePartyAsGuest()" ${party.busy ? 'disabled' : ''} class="mt-2 w-full py-2 text-red-300 hover:text-red-200 hover:bg-red-950/40 disabled:opacity-60 border border-red-900/60 font-medium text-sm rounded-lg flex items-center justify-center gap-2 transition">
+                            <i class="fa-solid ${party.busy ? 'fa-spinner fa-spin' : 'fa-user-minus'}"></i> ${party.busy ? 'Removing...' : "I can't make it"}
                         </button>
                         <p class="mt-3 text-xs text-stone-500">You can edit your entry from this browser on this device.</p>
                     </div>`;

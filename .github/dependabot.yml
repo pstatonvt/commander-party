@@ -1,0 +1,24 @@
+# Weekly checks for dependency updates and security fixes. Dependabot opens a
+# pull request when something needs updating; nothing merges on its own.
+version: 2
+updates:
+  - package-ecosystem: npm
+    directory: /api
+    schedule:
+      interval: weekly
+    open-pull-requests-limit: 5
+
+  - package-ecosystem: npm
+    directory: /tools/tailwind
+    schedule:
+      interval: weekly
+    open-pull-requests-limit: 3
+    ignore:
+      # The page's styles are built with Tailwind 3; version 4 is a rewrite.
+      - dependency-name: tailwindcss
+        update-types: ["version-update:semver-major"]
+
+  - package-ecosystem: github-actions
+    directory: /
+    schedule:
+      interval: monthly
