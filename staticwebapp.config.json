@@ -2,8 +2,16 @@
   "routes": [
     { "route": "/api/host/*", "allowedRoles": ["host"] },
     { "route": "/api/*", "allowedRoles": ["anonymous"] },
+
     { "route": "/.auth/login/github", "allowedRoles": ["anonymous"] },
-    { "route": "/.auth/login/*", "statusCode": 404 }
+    { "route": "/.auth/login/*", "statusCode": 404 },
+    { "route": "/.auth/*", "allowedRoles": ["anonymous"] },
+
+    { "route": "/", "allowedRoles": ["anonymous"] },
+    { "route": "/index.html", "allowedRoles": ["anonymous"] },
+    { "route": "/robots.txt", "allowedRoles": ["anonymous"] },
+
+    { "route": "/*", "statusCode": 404 }
   ],
   "globalHeaders": {
     "X-Robots-Tag": "noindex, nofollow, noarchive",

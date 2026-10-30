@@ -79,6 +79,8 @@ Each function validates and trims input, rejects unknown fields, checks the caps
 
 [staticwebapp.config.json](../staticwebapp.config.json) at the repo root does the gatekeeping. It allows only the `host` role on `/api/host/*`, offers GitHub as the only sign-in provider, pins the API to Node 22, and adds `X-Robots-Tag: noindex` plus basic security headers to every response.
 
+Because the app location is the repo root, Azure uploads every file in the repo as static content. The config therefore works as an allow-list: it serves only `/`, `/index.html`, `/robots.txt`, `/api/*`, and `/.auth/*`, and returns 404 for everything else, including the docs, SQL scripts, workflows, and API source. **Any new file the site needs to serve must be added to the allow-list.**
+
 API 401s are returned as-is, not redirected, so `fetch` gets a clean status and the front end sends the host to `/.auth/login/github` itself.
 
 Only the maintainer gets the `host` role: in the portal, SWA > Role management > Invite, GitHub provider, your username, role `host`. Nobody else can ever reach `/api/host/*` even if they sign in with GitHub.
@@ -115,7 +117,7 @@ Only the maintainer gets the `host` role: in the portal, SWA > Role management >
 |   +-- 002_app_login.sql       (creates the low-privilege login + grants)
 +-- docs/azure-plan.md          (this file)
 +-- .github/workflows/
-    +-- azure-static-web-apps.yml   (added by SWA when you link the repo)
+    +-- azure-static-web-apps-*.yml (added by Azure when the repo is linked)
     +-- purge-expired.yml           (nightly cron calling /api/admin/purge)
 ```
 
@@ -124,7 +126,7 @@ Only the maintainer gets the `host` role: in the portal, SWA > Role management >
 **Phase 0: account and guard rails** (about 30 min)
 1. Create the Azure free account. It starts with 30 days of credit and a spending limit *on*. When the 30 days end, it converts to pay-as-you-go and that hard limit goes away, so the free-tier choices below are what protect you after that.
 2. Cost Management > Budgets > Add: $50/month, alerts at 50%, 80%, 100% to your email.
-3. Create a resource group, e.g. `rg-commander-party`, region `East US 2`.
+3. Create a resource group, e.g. `rg-commander-party`. Pick a nearby region. New subscriptions are sometimes blocked from busy regions such as East US and East US 2; Central US worked for this project. Use the same region for the SQL server and the Static Web App's Functions.
 
 **Phase 1: database** (about 30 min)
 4. Create SQL server: `sql-commander-party-<something>`, authentication "Use SQL authentication" with a strong admin password (save it in a password manager; it is only for SSMS). Networking: public endpoint, **Allow Azure services and resources to access this server = Yes**, and add your current client IP.
@@ -133,7 +135,7 @@ Only the maintainer gets the `host` role: in the portal, SWA > Role management >
 7. Copy the ADO.NET connection string from the portal, set `User ID=commander_api` and its password. Keep it out of the repo.
 
 **Phase 2: static web app** (about 20 min)
-8. Create Static Web App: plan **Free**, source GitHub, this repo, branch `main`, build preset Custom, app location `/`, api location `api`, output location empty. Azure commits the workflow file to the repo.
+8. Create Static Web App: plan **Free**, source GitHub, this repo, branch `main`, build preset Custom, app location `/`, api location `api`, output location `.`. Azure commits the workflow file to the repo, so run `git pull --rebase` before your next push. The first Actions run may fail or deploy without the API until `api/` is on `main`.
 9. SWA > Settings > Environment variables: add `SQL_CONNECTION_STRING`, `IP_HASH_SALT` (a long random string, used to hash guest IPs for rate limiting), and `PURGE_SECRET` (another long random string).
 10. SWA > Role management > Invite: provider GitHub, your GitHub username, role `host`, expiry max. Accept the invite link.
 11. Note the new URL (`https://<name>.azurestaticapps.net`). Optionally add a custom domain later (free on SWA).
@@ -160,6 +162,16 @@ npm install -g @azure/static-web-apps-cli azure-functions-core-tools@4
 ```
 
 Copy `api/local.settings.example.json` to `api/local.settings.json` (git-ignored), fill in the connection string, then run `swa start . --api-location api` from the repo root. The local SQL Server Developer instance works as a stand-in database if SQL authentication is enabled on it.
+
+On Node 24, the SWA CLI refuses to start the API itself. Run the Functions host and the emulator separately instead:
+
+```bash
+cd api && func start --port 7071
+```
+
+```bash
+swa start . --api-devserver-url http://localhost:7071
+```
 
 ### API behaviour notes (from step B)
 

@@ -38,7 +38,7 @@ Until step E ships, the live site works as it always has, saving only in your br
 | `api/` | Azure Functions API (Node.js 22) for shareable parties |
 | `db/` | SQL Server scripts for the database schema and the API's limited database user |
 | `docs/` | Architecture, security, and deployment notes |
-| `staticwebapp.config.json` | Azure Static Web Apps routing, sign-in rules, and response headers |
+| `staticwebapp.config.json` | Azure Static Web Apps routing, sign-in rules, and response headers. Only the files it allow-lists are served; add any new public file there. |
 | `robots.txt` | Crawler rules; see Privacy below |
 
 ## Running it locally
