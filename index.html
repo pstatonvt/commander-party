@@ -247,34 +247,34 @@
         /* Shareable party page (?party=...): the organizer and share panel are hidden */
         body.party-mode > header,
         body.party-mode > main,
-        body.party-mode #shareTab,
-        body.party-mode .share-tab-zone,
-        body.party-mode #sharePanel,
-        body.party-mode #sharePanelBackdrop {
+        body.party-mode #linkDrawerTab,
+        body.party-mode .drawer-tab-zone,
+        body.party-mode #linkDrawer,
+        body.party-mode #linkDrawerBackdrop {
             display: none !important;
         }
 
         /* Share tab peeks out of the left edge and slides fully out on hover */
-        .share-tab {
+        .drawer-tab {
             transform: translateX(calc(-100% + 2.1rem));
             transition: transform 0.2s ease;
         }
-        .share-tab:hover,
-        .share-tab:focus-visible,
-        .share-tab-zone:hover + .share-tab {
+        .drawer-tab:hover,
+        .drawer-tab:focus-visible,
+        .drawer-tab-zone:hover + .drawer-tab {
             transform: translateX(0);
         }
         /* The panel appears instantly rather than sliding in: a slide only
            shows the panel once the animation runs, and browsers can pause
            or slow animations, which left the page dimmed with no panel. */
-        .share-panel {
+        .link-drawer {
             display: none;
         }
-        .share-panel.open {
+        .link-drawer.open {
             display: block;
         }
         @media (prefers-reduced-motion: reduce) {
-            .share-tab { transition: none; }
+            .drawer-tab { transition: none; }
         }
         .party-spinner {
             width: 2.5rem;
@@ -316,8 +316,8 @@
                         <i id="saveStatusIcon" class="fa-solid fa-cloud text-stone-500"></i>
                         <span id="saveStatusText">Saved</span>
                     </div>
-                    <button id="shareBtn" type="button" onclick="openSharePanel()" class="px-3 py-1.5 bg-felt-950 hover:bg-felt-900 text-felt-200 border border-felt-800 font-medium text-xs rounded-lg flex items-center justify-center gap-1.5 transition" title="Make a link guests can use to add themselves">
-                        <i class="fa-solid fa-share-nodes"></i> <span id="shareBtnLabel">Share link</span>
+                    <button id="partyLinkBtn" type="button" onclick="openSharePanel()" class="px-3 py-1.5 bg-felt-950 hover:bg-felt-900 text-felt-200 border border-felt-800 font-medium text-xs rounded-lg flex items-center justify-center gap-1.5 transition" title="Make a link guests can use to add themselves">
+                        <i class="fa-solid fa-share-nodes"></i> <span id="partyLinkBtnLabel">Share link</span>
                     </button>
                 </div>
 
@@ -767,19 +767,19 @@
     </div>
 
     <!-- Share panel: slides out from the left edge (hover the tab, or tap it or the Share link button) -->
-    <div class="share-tab-zone fixed left-0 top-0 w-8 h-52 z-40" aria-hidden="true"></div>
-    <button id="shareTab" type="button" onclick="openSharePanel()" onmouseenter="openSharePanel({ hover: true })" onmouseleave="closeSharePanelSoon()" aria-controls="sharePanel" aria-expanded="false"
-        class="share-tab fixed left-0 top-28 z-40 flex items-center gap-2 pl-2 pr-3 py-2.5 bg-felt-700 hover:bg-felt-600 text-white text-xs font-semibold rounded-r-xl border border-l-0 border-felt-500 shadow-lg">
-        <i class="fa-solid fa-link"></i> <span id="shareTabLabel">Generate link</span>
+    <div class="drawer-tab-zone fixed left-0 top-0 w-8 h-52 z-40" aria-hidden="true"></div>
+    <button id="linkDrawerTab" type="button" onclick="openSharePanel()" onmouseenter="openSharePanel({ hover: true })" onmouseleave="closeSharePanelSoon()" aria-controls="linkDrawer" aria-expanded="false"
+        class="drawer-tab fixed left-0 top-28 z-40 flex items-center gap-2 pl-2 pr-3 py-2.5 bg-felt-700 hover:bg-felt-600 text-white text-xs font-semibold rounded-r-xl border border-l-0 border-felt-500 shadow-lg">
+        <i class="fa-solid fa-link"></i> <span id="linkDrawerTabLabel">Generate link</span>
     </button>
-    <div id="sharePanelBackdrop" class="fixed inset-0 z-40 bg-black/40 hidden" onclick="closeSharePanel()"></div>
-    <aside id="sharePanel" class="share-panel fixed left-0 top-0 bottom-0 z-50 w-[22rem] max-w-[92vw] bg-mtg-card border-r border-mtg-border shadow-2xl overflow-y-auto"
+    <div id="linkDrawerBackdrop" class="fixed inset-0 z-40 bg-black/40 hidden" onclick="closeSharePanel()"></div>
+    <aside id="linkDrawer" class="link-drawer fixed left-0 top-0 bottom-0 z-50 w-[22rem] max-w-[92vw] bg-mtg-card border-r border-mtg-border shadow-2xl overflow-y-auto"
         onmouseleave="closeSharePanelSoon()" onmouseenter="cancelSharePanelClose()" onpointerdown="pinSharePanel()" aria-label="Share this party" aria-hidden="true">
         <div class="flex items-center justify-between px-5 py-4 border-b border-mtg-border">
             <h2 class="text-base font-semibold text-white flex items-center gap-2"><i class="fa-solid fa-share-nodes text-felt-400"></i> Share this party</h2>
             <button type="button" onclick="closeSharePanel()" class="text-stone-400 hover:text-white p-1" aria-label="Close"><i class="fa-solid fa-xmark text-lg"></i></button>
         </div>
-        <div id="sharePanelBody" class="p-5 space-y-5 text-sm"></div>
+        <div id="linkDrawerBody" class="p-5 space-y-5 text-sm"></div>
     </aside>
 
     <!-- Small notices, e.g. "Jace joined the party" -->
@@ -3174,12 +3174,12 @@
         }
 
         function renderShareLabels() {
-            document.getElementById('shareTabLabel').innerText = cloud.active ? 'Party link' : 'Generate link';
-            document.getElementById('shareBtnLabel').innerText = cloud.active ? 'Party link' : 'Share link';
+            document.getElementById('linkDrawerTabLabel').innerText = cloud.active ? 'Party link' : 'Generate link';
+            document.getElementById('partyLinkBtnLabel').innerText = cloud.active ? 'Party link' : 'Share link';
         }
 
         function sharePanelOpen() {
-            return document.getElementById('sharePanel').classList.contains('open');
+            return document.getElementById('linkDrawer').classList.contains('open');
         }
 
         // Hovering the tab peeks the panel open without dimming the page; it
@@ -3191,13 +3191,13 @@
             cancelSharePanelClose();
             if (!options.hover && !sharePanelPinned) {
                 sharePanelPinned = true;
-                document.getElementById('sharePanelBackdrop').classList.remove('hidden');
+                document.getElementById('linkDrawerBackdrop').classList.remove('hidden');
             }
             if (sharePanelOpen()) return;
-            const panel = document.getElementById('sharePanel');
+            const panel = document.getElementById('linkDrawer');
             panel.classList.add('open');
             panel.setAttribute('aria-hidden', 'false');
-            document.getElementById('shareTab').setAttribute('aria-expanded', 'true');
+            document.getElementById('linkDrawerTab').setAttribute('aria-expanded', 'true');
             renderSharePanel();
             refreshHostAuth().then(() => {
                 renderSharePanel();
@@ -3210,16 +3210,16 @@
             if (!sharePanelOpen() || sharePanelPinned) return;
             cancelSharePanelClose();
             sharePanelPinned = true;
-            document.getElementById('sharePanelBackdrop').classList.remove('hidden');
+            document.getElementById('linkDrawerBackdrop').classList.remove('hidden');
         }
 
         function closeSharePanel() {
             cancelSharePanelClose();
-            const panel = document.getElementById('sharePanel');
+            const panel = document.getElementById('linkDrawer');
             panel.classList.remove('open');
             panel.setAttribute('aria-hidden', 'true');
-            document.getElementById('shareTab').setAttribute('aria-expanded', 'false');
-            document.getElementById('sharePanelBackdrop').classList.add('hidden');
+            document.getElementById('linkDrawerTab').setAttribute('aria-expanded', 'false');
+            document.getElementById('linkDrawerBackdrop').classList.add('hidden');
             sharePanelPinned = false;
             shareMessage = '';
         }
@@ -3231,7 +3231,7 @@
             if (sharePanelPinned) return;
             sharePanelCloseTimer = setTimeout(() => {
                 if (sharePanelPinned) return;
-                const panel = document.getElementById('sharePanel');
+                const panel = document.getElementById('linkDrawer');
                 if (!panel.contains(document.activeElement)) closeSharePanel();
             }, 600);
         }
@@ -3257,7 +3257,7 @@
         const shareSecondary = 'px-3 py-2 bg-stone-800 hover:bg-stone-700 text-stone-200 border border-stone-700 text-xs font-medium rounded-lg transition inline-flex items-center gap-1.5';
 
         function renderSharePanel() {
-            const body = document.getElementById('sharePanelBody');
+            const body = document.getElementById('linkDrawerBody');
             const message = shareMessage
                 ? `<div class="rounded-lg px-3 py-2 ${shareMessageIsError ? 'text-red-300 bg-red-950/50 border border-red-900/70' : 'text-emerald-300 bg-emerald-950/50 border border-emerald-800/70'}" role="status">${escapeHtml(shareMessage)}</div>`
                 : '';
@@ -3283,8 +3283,8 @@
                     <div class="space-y-3">
                         <p class="text-stone-300">Make a private link for this event. Guests who open it can add their name, experience, and potluck dish, and see the seating.</p>
                         <div>
-                            <label for="sharePartyName" class="block text-xs font-medium text-stone-400 mb-1">Party name</label>
-                            <input type="text" id="sharePartyName" maxlength="80" value="${escapeHtml(defaultPartyName())}"
+                            <label for="partyNameInput" class="block text-xs font-medium text-stone-400 mb-1">Party name</label>
+                            <input type="text" id="partyNameInput" maxlength="80" value="${escapeHtml(defaultPartyName())}"
                                 class="w-full bg-stone-900/90 border border-stone-700 rounded-lg px-3 py-2 text-base sm:text-sm text-white focus:outline-none focus:border-felt-500 focus:ring-1 focus:ring-felt-500">
                         </div>
                         <button type="button" onclick="generatePartyLink()" ${shareBusy ? 'disabled' : ''} class="${shareButton}">
@@ -3304,9 +3304,9 @@
                         <div class="font-display text-xl font-semibold text-white break-words">${escapeHtml(cloud.name)}</div>
                     </div>
                     <div>
-                        <label for="shareLinkInput" class="block text-xs font-medium text-stone-400 mb-1">Guest link</label>
+                        <label for="guestLinkInput" class="block text-xs font-medium text-stone-400 mb-1">Guest link</label>
                         <div class="flex gap-2">
-                            <input type="text" id="shareLinkInput" readonly value="${escapeHtml(shareUrl())}" onclick="this.select()"
+                            <input type="text" id="guestLinkInput" readonly value="${escapeHtml(shareUrl())}" onclick="this.select()"
                                 class="flex-1 min-w-0 bg-stone-900/90 border border-stone-700 rounded-lg px-3 py-2 text-xs text-stone-200 focus:outline-none focus:border-felt-500">
                             <button type="button" onclick="copyShareLink()" class="px-3 py-2 bg-felt-600 hover:bg-felt-500 text-white text-xs font-semibold rounded-lg transition"><i class="fa-regular fa-copy mr-1"></i>Copy</button>
                         </div>
@@ -3344,7 +3344,7 @@
 
         async function generatePartyLink() {
             if (shareBusy) return;
-            const input = document.getElementById('sharePartyName');
+            const input = document.getElementById('partyNameInput');
             const name = (input && input.value.trim()) || defaultPartyName();
             shareBusy = true;
             shareMessage = '';
@@ -3379,7 +3379,7 @@
                 await navigator.clipboard.writeText(shareUrl());
                 showToast('Link copied');
             } catch {
-                const input = document.getElementById('shareLinkInput');
+                const input = document.getElementById('guestLinkInput');
                 if (input) {
                     input.focus();
                     input.select();
