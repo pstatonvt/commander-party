@@ -2,7 +2,7 @@
 
 A single-page organizer for Magic: The Gathering Commander game nights. It tracks who's coming, their experience level, and what they're bringing to the potluck, then seats everyone into pods round by round.
 
-Live site: https://pstatonvt.github.io/commander-party/
+Live site: https://purple-dune-064af1710.3.azurestaticapps.net
 
 ## Features
 
@@ -24,11 +24,11 @@ The next version moves the site to Azure so a host can generate a private link f
 | A | Database schema, hosting config, search-engine opt-out | Done |
 | B | Guest API: read a party, join, edit your own entry | Done |
 | C | Host API: create, save, and manage parties | Done |
-| D | Guest view, join form, and expired-link page | Not started |
+| D | Guest view, join form, and expired-link page | Done |
 | E | Generate-link button, cloud autosave, live roster | Not started |
 | F | Expired-party cleanup and limit testing | Not started |
 
-Until step E ships, the live site works as it always has, saving only in your browser.
+Until step E ships, the organizer works as it always has, saving only in your browser. Party links already open the guest page, but there's no button to create one yet.
 
 ## Project layout
 
@@ -57,6 +57,7 @@ The tests use a fake database. Running the API itself needs a SQL Server databas
 
 - **The organizer stores nothing on a server today.** All event data stays in your browser until you export it.
 - **Shareable parties will store only what guests type in**: a name, an experience level, and a dish. Guest IP addresses are never stored; the API keeps a salted hash for a short time to rate-limit joins.
+- **A guest's edit permission stays in their browser.** Joining saves a private token on that device, so the guest can change their own entry later. Nobody else can edit it, apart from the host.
 - **Party links expire 60 days after they're created.** After that the link shows an expired page.
 - **Search engines are asked not to index the site.** Every page carries a `noindex` tag and header. `robots.txt` allows crawling on purpose, because search engines only obey `noindex` on pages they're allowed to read.
 

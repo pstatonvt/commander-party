@@ -92,12 +92,12 @@ Only the maintainer gets the `host` role: in the portal, SWA > Role management >
 
 ## 4. Front end changes (`index.html`)
 
-1. **Party mode detection.** On load, read `?party=<guid>`. No param: today's localStorage behaviour, unchanged. With a param: call `GET /api/parties/{guid}`. 404 shows "no such party", 410 shows the expired page.
+1. **Party mode detection** (done in step D). On load, read `?party=<guid>`. No param: today's localStorage behaviour, unchanged. With a param, the organizer never loads or saves anything in that browser; the page calls `GET /api/parties/{guid}` instead. A malformed id shows "couldn't find that party" without calling the API, 404 shows the same, and 410 shows the expired page. The screen wake lock and chime unlock are off in party mode so guests' phones behave normally.
 2. **Host vs guest.** Call `/.auth/me`. If the user has the `host` role and owns the party, show the full organizer with cloud autosave (debounced `PUT`). Otherwise show the **guest view**.
-3. **Guest view.** Party name, a join form (name, experience, dish), the roster, the potluck summary, and the current round's seating read-only. After joining, the edit token is kept in localStorage so the guest sees "Edit my entry" on return. No Hat Draw, timer, results, export, or reset.
+3. **Guest view** (done in step D). Party name and expiry, a join form (name, experience, dish), the roster, the potluck list, and the current round's seating, read-only. The guest's own seat and pod are highlighted. After joining, the edit token is kept in localStorage under `commander_party_guest_entries_v1`, so the guest sees "Edit my entry" on return. If the host removed them, the token is dropped and the join form comes back with a notice. No Hat Draw, timer, results, export, or reset. Every name and dish is HTML-escaped.
 4. **Generate link.** A slide-out tab on the left edge (hover or tap) with: **Generate link** (host only; creates the party from the current state, switches the URL to `?party=...`), **Copy link**, the expiry date, and **My parties**. Also a small "Share link" button under the autosave badge so it is discoverable on tablets where hover does not exist.
-5. **Live roster.** While a party is open, poll `GET /api/parties/{guid}` every 15 s (only when the tab is visible). New guest players are merged into `players` with `tableId: null` so they appear as unseated; the host seats them as usual.
-6. **Expired page.** Simple full-page card: "This party link expired on <date>", with a link to the plain organizer.
+5. **Live roster.** While a party is open, poll `GET /api/parties/{guid}`. New guest players are merged into `players` with `tableId: null` so they appear as unseated; the host seats them as usual. Every poll wakes the free-tier database, and a database that never sleeps burns the monthly free compute. So polling runs every 45 s only while the tab is visible, pauses after 20 minutes without a tap or key press, and resumes on the next one. The guest page (step D) already works this way; the host page (step E) should match. It also skips a poll while someone is typing in a form.
+6. **Expired page** (done in step D). Full-page card: "This party has ended. This link expired on <date>", with a link to the plain organizer. Loading, "waking up the party server", not-found, and connection-error states use the same card.
 7. **Save indicator.** The existing badge gains states: "Saved to cloud", "Saving...", "Offline, saved locally" (keeps writing to localStorage as a fallback and retries).
 8. **noindex meta** in `<head>` (done in step A).
 9. **Sign-in handling.** A 401 from `/api/host/*` sends the host to `/.auth/login/github?post_login_redirect_uri=<current URL>`.
@@ -146,7 +146,7 @@ Only the maintainer gets the `host` role: in the portal, SWA > Role management >
 11. Note the new URL (`https://<name>.azurestaticapps.net`). Optionally add a custom domain later (free on SWA).
 12. In GitHub repo Settings > Secrets, add `PURGE_SECRET` with the same value for the nightly workflow.
 
-**Phase 3: retire GitHub Pages**
+**Phase 3: retire GitHub Pages** (done)
 13. Repo Settings > Pages > disable, or leave a tiny redirect page with noindex. Either way the old GitHub Pages URL should stop serving the organizer so there is one home, indexed nowhere.
 
 ## 7. Build order (code)
@@ -156,7 +156,7 @@ Only the maintainer gets the `host` role: in the portal, SWA > Role management >
 | A (done) | `db/*.sql`, `staticwebapp.config.json`, `robots.txt`, noindex meta | Run SQL in SSMS; `curl -I` shows `X-Robots-Tag` |
 | B (done) | `api/` scaffold + `GET /api/parties/{guid}` + `POST .../players` + guest `PUT .../players/{id}` with validation and caps | `npm test` in `api/` (fake DB); the SQL batches were also run against a local SQL Server 2025 scratch database |
 | C (done) | Host routes + role enforcement | `npm test` (fake DB, including 401/403 on every host route); host SQL run against a local SQL Server scratch database; live `/api/host/parties` returns 401 signed out |
-| D | Front end: party-mode load, guest view, join form, expired page | Open a link in a private window as a guest |
+| D (done) | Front end: party-mode load, guest view, join form, expired page | Tested in a browser against a stand-in API that mimics the real responses, including a sleeping database (503, then a gateway timeout) and a host removing the guest. Checked at phone width. |
 | E | Generate-link slide-out, cloud autosave, roster polling | Host generates link on one device, guest joins on a phone, host sees them appear |
 | F | Purge workflow, rate-limit table, budget alert test | Manually run the workflow; hammer the join endpoint and see 429 |
 
@@ -182,7 +182,7 @@ swa start . --api-devserver-url http://localhost:7071
 
 - Requests with a malformed GUID or invalid body are rejected **before** connecting to SQL, so junk traffic never wakes a paused database.
 - A paused or resuming database returns `503` with `Retry-After: 30`; the front end should show "waking up, retrying" and retry.
-- A cold start can take longer than the roughly 45 seconds Static Web Apps waits for the API. Azure then answers `500` with the plain-text body `Backend call failure`, before the API can reply. This was seen on the first live request after deploying. The front end should treat that `500` like a `503`: wait, then retry once or twice.
+- A cold start can take longer than the roughly 45 seconds Static Web Apps waits for the API. Azure then answers `500` with the plain-text body `Backend call failure`, before the API can reply. This was seen on the first live request after deploying. The guest page retries reads on both, waiting 4, 10, 20, then 30 seconds. Writes retry only on `503`: after a gateway timeout the write may already have gone through, so the page asks the guest to refresh and check instead of joining twice.
 - Join outcomes: `201` joined, `400` bad input, `404` unknown link, `409` party full or duplicate name (case-insensitive), `410` expired, `413` body too large, `415` not JSON, `429` rate-limited.
 - Guests cannot set partners. Locked pairs are a host action.
 

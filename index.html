@@ -243,6 +243,26 @@
                 justify-content: center;
             }
         }
+
+        /* Shareable party page (?party=...): the organizer is hidden */
+        body.party-mode > header,
+        body.party-mode > main {
+            display: none !important;
+        }
+        .party-spinner {
+            width: 2.5rem;
+            height: 2.5rem;
+            border-radius: 9999px;
+            border: 3px solid #37322c;
+            border-top-color: #5aa48b;
+            animation: party-spin 0.9s linear infinite;
+        }
+        @keyframes party-spin {
+            to { transform: rotate(360deg); }
+        }
+        @media (prefers-reduced-motion: reduce) {
+            .party-spinner { animation-duration: 3s; }
+        }
     </style>
 </head>
 <body class="min-h-screen flex flex-col justify-between antialiased">
@@ -714,6 +734,11 @@
         </button>
     </div>
 
+    <!-- Shareable party page: shown instead of the organizer when the URL has ?party=<id> -->
+    <div id="partyPage" class="hidden flex-1">
+        <div id="partyRoot"></div>
+    </div>
+
     <!-- Footer -->
     <footer class="mt-8 border-t border-mtg-border/50 py-4 text-center text-xs text-stone-600">
         Commander Party Pod Organizer &bull; Built for Magic: The Gathering Game Nights
@@ -766,6 +791,12 @@
 
         // Initial Load
         window.onload = function() {
+            // A party link shows the guest page and never touches this browser's saved event
+            const partyParam = partyIdFromUrl();
+            if (partyParam !== undefined) {
+                startPartyMode(partyParam);
+                return;
+            }
             loadSavedState();
             loadTimer();
             renderAll();
@@ -1249,6 +1280,8 @@
         let wakeLock = null;
 
         async function requestWakeLock() {
+            // Guests on a party link shouldn't have their phone screen held on
+            if (isPartyMode()) return;
             if (wakeLock || document.visibilityState !== 'visible' || !('wakeLock' in navigator)) return;
             try {
                 wakeLock = await navigator.wakeLock.request('screen');
@@ -1274,6 +1307,7 @@
         let audioCtx = null;
 
         function unlockAudio() {
+            if (isPartyMode()) return;
             try {
                 const AC = window.AudioContext || window.webkitAudioContext;
                 if (!AC) return;
@@ -2689,6 +2723,621 @@
             });
             placeStrandedPairs(slots, stranded);
             finishSlots(slots);
+        }
+
+        // ---------- Shareable party page (?party=<id>) ----------
+        // Anyone with a party link sees this page instead of the organizer: the
+        // party's roster, potluck, and current seating, plus a form to join. It
+        // talks only to the guest API and never reads or writes the organizer's
+        // saved event in this browser.
+
+        const PARTY_ID_PATTERN = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i;
+        const GUEST_STORAGE_KEY = 'commander_party_guest_entries_v1';
+        const PARTY_EXPERIENCES = ['New', 'Learning', 'Veteran'];
+        const PARTY_MAX_PLAYERS = 40; // matches MAX_PLAYERS_PER_PARTY in api/src/lib/limits.js
+        // Each refresh wakes the free-tier database, so refreshing stops while
+        // the tab is hidden or nobody has touched the page for a while.
+        const PARTY_POLL_MS = 45000;
+        const PARTY_IDLE_STOP_MS = 20 * 60 * 1000;
+
+        const party = {
+            id: null,            // set as soon as the URL has ?party=
+            status: 'loading',   // loading | ready | notFound | expired | error
+            data: null,          // last GET /api/parties/{id} body
+            me: null,            // { playerId, editToken } remembered in this browser
+            editing: false,
+            busy: false,
+            loading: false,
+            formError: '',
+            notice: '',
+            draft: null,         // join/edit form values kept across re-renders
+            syncNote: '',
+            pollTimer: null,
+            pollPaused: false,
+            lastActivity: Date.now(),
+            lastLoaded: null
+        };
+
+        function isPartyMode() {
+            return party.id !== null;
+        }
+
+        // undefined when the URL has no party; otherwise the raw value
+        function partyIdFromUrl() {
+            const value = new URLSearchParams(window.location.search).get('party');
+            return value === null ? undefined : value.trim();
+        }
+
+        function organizerUrl() {
+            return window.location.pathname;
+        }
+
+        function formatPartyDate(iso) {
+            const d = new Date(iso);
+            return Number.isNaN(d.getTime()) ? '' : d.toLocaleDateString(undefined, { month: 'long', day: 'numeric', year: 'numeric' });
+        }
+
+        function formatPartyTime(date) {
+            return date.toLocaleTimeString(undefined, { hour: 'numeric', minute: '2-digit' });
+        }
+
+        // Guests' edit tokens, one per party, kept only in this browser
+        function readGuestEntries() {
+            try {
+                const parsed = JSON.parse(localStorage.getItem(GUEST_STORAGE_KEY) || '{}');
+                return parsed && typeof parsed === 'object' && !Array.isArray(parsed) ? parsed : {};
+            } catch {
+                return {};
+            }
+        }
+
+        function loadMyEntry(partyId) {
+            const entry = readGuestEntries()[partyId];
+            if (!entry || !PARTY_ID_PATTERN.test(entry.playerId || '') || !PARTY_ID_PATTERN.test(entry.editToken || '')) return null;
+            return { playerId: entry.playerId.toLowerCase(), editToken: entry.editToken.toLowerCase() };
+        }
+
+        function saveMyEntry(partyId, entry) {
+            try {
+                const all = readGuestEntries();
+                if (entry) all[partyId] = entry;
+                else delete all[partyId];
+                localStorage.setItem(GUEST_STORAGE_KEY, JSON.stringify(all));
+            } catch {
+                // Private browsing: the entry just isn't remembered on this device
+            }
+        }
+
+        const partySleep = ms => new Promise(resolve => setTimeout(resolve, ms));
+
+        // Calls the guest API. A paused free-tier database answers 503. A cold
+        // start that outlasts Azure's ~45 s gateway answers 500 "Backend call
+        // failure". Reads retry on both. Writes retry only on 503, because after
+        // a gateway timeout the write may already have gone through.
+        async function partyRequest(method, path, body, onWaiting) {
+            const delays = [4000, 10000, 20000, 30000];
+            for (let attempt = 0; ; attempt++) {
+                let res = null;
+                let text = '';
+                try {
+                    res = await fetch(`/api${path}`, {
+                        method,
+                        headers: body ? { 'Content-Type': 'application/json' } : {},
+                        body: body ? JSON.stringify(body) : undefined,
+                        cache: 'no-store'
+                    });
+                    text = await res.text();
+                } catch {
+                    res = null;
+                }
+                const gatewayTimeout = res && res.status === 500 && /backend call failure/i.test(text);
+                const retryable = res
+                    ? res.status === 503 || (method === 'GET' && gatewayTimeout)
+                    : method === 'GET';
+                if (retryable && attempt < delays.length) {
+                    if (onWaiting) onWaiting(attempt);
+                    await partySleep(delays[attempt]);
+                    continue;
+                }
+                if (!res) return { status: 0, body: null, gatewayTimeout: false };
+                let parsed = null;
+                try {
+                    parsed = text ? JSON.parse(text) : null;
+                } catch {
+                    parsed = null;
+                }
+                return { status: res.status, body: parsed, gatewayTimeout };
+            }
+        }
+
+        function partyErrorMessage(result) {
+            const serverMessage = result.body && result.body.error && result.body.error.message;
+            if (serverMessage) return serverMessage;
+            if (result.status === 0) return "Couldn't reach the server. Check your connection and try again.";
+            if (result.gatewayTimeout) return 'The server took too long to answer. Tap Refresh to see whether your change went through before trying again.';
+            return 'Something went wrong. Please try again.';
+        }
+
+        async function startPartyMode(rawId) {
+            party.id = rawId;
+            document.body.classList.add('party-mode');
+            document.getElementById('partyPage').classList.remove('hidden');
+
+            if (!PARTY_ID_PATTERN.test(rawId)) {
+                party.status = 'notFound';
+                renderPartyMessage('notFound');
+                return;
+            }
+            party.id = rawId.toLowerCase();
+            party.me = loadMyEntry(party.id);
+
+            ['pointerdown', 'keydown'].forEach(evt => document.addEventListener(evt, notePartyActivity, { passive: true }));
+            document.addEventListener('visibilitychange', () => {
+                if (document.visibilityState === 'visible') notePartyActivity();
+            });
+
+            renderPartyMessage('loading');
+            await refreshParty();
+        }
+
+        // Any tap or key press counts as someone looking; it restarts paused refreshing
+        function notePartyActivity() {
+            party.lastActivity = Date.now();
+            if (party.status === 'ready' && party.pollPaused && !party.loading) {
+                party.pollPaused = false;
+                refreshParty();
+            }
+        }
+
+        function stopPartyPoll() {
+            clearTimeout(party.pollTimer);
+            party.pollTimer = null;
+        }
+
+        function schedulePartyPoll() {
+            stopPartyPoll();
+            party.pollTimer = setTimeout(() => {
+                party.pollTimer = null;
+                const idle = Date.now() - party.lastActivity > PARTY_IDLE_STOP_MS;
+                if (document.visibilityState !== 'visible' || idle) {
+                    party.pollPaused = true;
+                    renderPartySyncLine();
+                    return;
+                }
+                // Don't redraw under someone who is typing in the form
+                const typing = document.activeElement && document.activeElement.closest && document.activeElement.closest('#partyRoot form');
+                if (typing || party.busy) {
+                    schedulePartyPoll();
+                    return;
+                }
+                refreshParty();
+            }, PARTY_POLL_MS);
+        }
+
+        async function refreshParty() {
+            if (party.loading || !PARTY_ID_PATTERN.test(party.id || '')) return;
+            party.loading = true;
+            if (party.data) {
+                party.syncNote = 'Refreshing...';
+                renderPartySyncLine();
+            }
+            const result = await partyRequest('GET', `/parties/${party.id}`, null, () => {
+                if (party.data) {
+                    party.syncNote = 'Waking up the party server...';
+                    renderPartySyncLine();
+                } else {
+                    renderPartyMessage('waking');
+                }
+            });
+            party.loading = false;
+
+            if (result.status === 200 && result.body) {
+                party.data = result.body;
+                party.status = 'ready';
+                party.lastLoaded = new Date();
+                party.syncNote = '';
+                party.pollPaused = false;
+                reconcileMyEntry();
+                renderPartyPage();
+                schedulePartyPoll();
+                return;
+            }
+
+            if (result.status === 404) {
+                stopPartyPoll();
+                party.status = 'notFound';
+                renderPartyMessage('notFound');
+            } else if (result.status === 410) {
+                stopPartyPoll();
+                party.status = 'expired';
+                renderPartyMessage('expired', result.body && result.body.expiresAt);
+            } else if (party.data) {
+                // Keep showing what we have and try again later
+                party.syncNote = "Couldn't refresh just now.";
+                renderPartySyncLine();
+                schedulePartyPoll();
+            } else {
+                party.status = 'error';
+                renderPartyMessage('error');
+            }
+        }
+
+        // Forget this browser's entry if the host removed that player
+        function reconcileMyEntry() {
+            if (!party.me) return;
+            const stillThere = party.data.players.some(p => p.id === party.me.playerId);
+            if (!stillThere) {
+                saveMyEntry(party.id, null);
+                party.me = null;
+                party.editing = false;
+                party.notice = 'The host removed your earlier entry. You can join again below.';
+            }
+        }
+
+        // ---------- Party page: join and edit ----------
+
+        function readPartyForm() {
+            const form = document.getElementById('partyJoinForm');
+            if (!form) return null;
+            return {
+                name: form.elements.guestName.value.trim(),
+                experience: form.elements.guestExperience.value,
+                dish: form.elements.guestDish.value.trim()
+            };
+        }
+
+        function startPartyEdit() {
+            const me = party.me && party.data.players.find(p => p.id === party.me.playerId);
+            if (!me) return;
+            party.editing = true;
+            party.formError = '';
+            party.notice = '';
+            party.draft = { name: me.name, experience: me.experience, dish: me.dish };
+            renderPartyPage();
+            const input = document.getElementById('guestName');
+            if (input) input.focus();
+        }
+
+        function cancelPartyEdit() {
+            party.editing = false;
+            party.formError = '';
+            party.draft = null;
+            renderPartyPage();
+        }
+
+        async function submitPartyJoin(e) {
+            e.preventDefault();
+            if (party.busy) return;
+            const values = readPartyForm();
+            party.draft = values;
+            if (!values.name) {
+                party.formError = 'Please enter your name.';
+                renderPartyPage();
+                return;
+            }
+
+            const editing = party.editing && party.me;
+            party.busy = true;
+            party.formError = '';
+            party.notice = '';
+            renderPartyPage();
+
+            const result = editing
+                ? await partyRequest('PUT', `/parties/${party.id}/players/${party.me.playerId}`, { ...values, editToken: party.me.editToken })
+                : await partyRequest('POST', `/parties/${party.id}/players`, values);
+            party.busy = false;
+
+            if ((result.status === 200 || result.status === 201) && result.body && result.body.player) {
+                if (!editing) {
+                    party.me = { playerId: result.body.player.id, editToken: result.body.editToken };
+                    saveMyEntry(party.id, party.me);
+                    if (window.confetti) confetti({ particleCount: 90, spread: 70, origin: { y: 0.25 } });
+                }
+                party.editing = false;
+                party.draft = null;
+                party.notice = editing ? 'Saved your changes.' : "You're in! See you at the table.";
+                await refreshParty();
+                return;
+            }
+
+            if (result.status === 410) {
+                stopPartyPoll();
+                party.status = 'expired';
+                renderPartyMessage('expired', result.body && result.body.expiresAt);
+                return;
+            }
+            if (editing && result.status === 404) {
+                saveMyEntry(party.id, null);
+                party.me = null;
+                party.editing = false;
+                party.formError = 'Your entry is no longer on this party. You can join again.';
+                await refreshParty();
+                return;
+            }
+            party.formError = partyErrorMessage(result);
+            renderPartyPage();
+        }
+
+        // ---------- Party page: rendering ----------
+
+        const partyCard = 'bg-mtg-card border border-mtg-border rounded-xl p-5 shadow-sm';
+        const partyInput = 'w-full bg-stone-900/90 border border-stone-700 rounded-lg px-3 py-2 text-base sm:text-sm text-white placeholder-stone-500 focus:outline-none focus:border-felt-500 focus:ring-1 focus:ring-felt-500';
+
+        function partyExperienceBadge(experience) {
+            return `<span class="text-[10px] uppercase tracking-wider font-semibold px-1.5 py-0.5 rounded border ${getExperienceBadgeClass(experience)}">${escapeHtml(experience)}</span>`;
+        }
+
+        function partySyncLineHtml() {
+            let text;
+            if (party.syncNote) text = escapeHtml(party.syncNote);
+            else if (party.pollPaused) text = 'Auto-refresh paused';
+            else if (party.lastLoaded) text = `Updated ${escapeHtml(formatPartyTime(party.lastLoaded))}`;
+            else text = '';
+            return `
+                <span class="text-xs text-stone-400">${text}</span>
+                <button type="button" onclick="refreshParty()" ${party.loading ? 'disabled' : ''}
+                    class="px-3 py-1.5 bg-stone-800 hover:bg-stone-700 disabled:opacity-50 text-stone-200 border border-stone-700 text-xs font-medium rounded-lg flex items-center gap-1.5 transition">
+                    <i class="fa-solid fa-rotate ${party.loading ? 'fa-spin' : ''}"></i> Refresh
+                </button>`;
+        }
+
+        function renderPartySyncLine() {
+            const el = document.getElementById('partySyncLine');
+            if (el) el.innerHTML = partySyncLineHtml();
+        }
+
+        function renderPartyJoinCard(me, playerById) {
+            const status = party.notice
+                ? `<div class="mb-4 text-sm text-emerald-300 bg-emerald-950/50 border border-emerald-800/70 rounded-lg px-3 py-2" role="status">${escapeHtml(party.notice)}</div>`
+                : '';
+            const error = party.formError
+                ? `<div class="mb-4 text-sm text-red-300 bg-red-950/50 border border-red-900/70 rounded-lg px-3 py-2" role="alert">${escapeHtml(party.formError)}</div>`
+                : '';
+
+            if (me && !party.editing) {
+                const partner = me.partnerId ? playerById.get(me.partnerId) : null;
+                return `
+                    <div class="${partyCard}">
+                        ${status}${error}
+                        <h2 class="text-base font-semibold text-white mb-3 flex items-center gap-2">
+                            <i class="fa-solid fa-circle-check text-emerald-400"></i> You're on the list
+                        </h2>
+                        <div class="rounded-lg border border-stone-700 bg-stone-900/60 p-3">
+                            <div class="flex items-center gap-2 flex-wrap">
+                                <span class="font-semibold text-white">${escapeHtml(me.name)}</span>
+                                ${partyExperienceBadge(me.experience)}
+                            </div>
+                            ${me.dish ? `<div class="mt-1 text-sm text-amber-400/90"><i class="fa-solid fa-utensils text-xs mr-1.5"></i>${escapeHtml(me.dish)}</div>` : '<div class="mt-1 text-sm text-stone-500">No dish listed</div>'}
+                            ${partner ? `<div class="mt-1 text-xs text-sky-300/90"><i class="fa-solid fa-link text-[10px] mr-1"></i>Seated with ${escapeHtml(partner.name)}</div>` : ''}
+                        </div>
+                        <button type="button" onclick="startPartyEdit()" class="mt-4 w-full py-2.5 bg-stone-800 hover:bg-stone-700 text-stone-200 border border-stone-700 font-medium text-sm rounded-lg flex items-center justify-center gap-2 transition">
+                            <i class="fa-solid fa-pen"></i> Edit my entry
+                        </button>
+                        <p class="mt-3 text-xs text-stone-500">You can edit your entry from this browser on this device.</p>
+                    </div>`;
+            }
+
+            const full = !party.editing && party.data.players.length >= PARTY_MAX_PLAYERS;
+            if (full) {
+                return `
+                    <div class="${partyCard}">
+                        ${status}${error}
+                        <h2 class="text-base font-semibold text-white mb-2 flex items-center gap-2">
+                            <i class="fa-solid fa-users-slash text-amber-400"></i> This party is full
+                        </h2>
+                        <p class="text-sm text-stone-400">Every spot is taken. Ask the host if they can make room.</p>
+                    </div>`;
+            }
+
+            const draft = party.draft || { name: '', experience: 'Learning', dish: '' };
+            const experienceOptions = PARTY_EXPERIENCES.map(level =>
+                `<option value="${level}" ${draft.experience === level ? 'selected' : ''}>${level}</option>`).join('');
+            const editing = party.editing;
+            return `
+                <div class="${partyCard}">
+                    ${status}${error}
+                    <h2 class="text-base font-semibold text-white mb-1 flex items-center gap-2">
+                        <i class="fa-solid ${editing ? 'fa-pen' : 'fa-user-plus'} text-felt-400"></i> ${editing ? 'Edit my entry' : 'Join this party'}
+                    </h2>
+                    <p class="text-xs text-stone-400 mb-4">${editing ? 'Change your name, experience, or dish.' : 'Add yourself so the host can seat you.'}</p>
+                    <form id="partyJoinForm" onsubmit="submitPartyJoin(event)" class="space-y-4" novalidate>
+                        <div>
+                            <label for="guestName" class="block text-xs font-medium text-stone-400 mb-1">Your name</label>
+                            <input type="text" id="guestName" name="guestName" maxlength="40" autocomplete="nickname" required
+                                value="${escapeHtml(draft.name)}" placeholder="e.g., Chandra Nalaar" class="${partyInput}">
+                        </div>
+                        <div class="grid grid-cols-1 sm:grid-cols-2 gap-3">
+                            <div>
+                                <label for="guestExperience" class="block text-xs font-medium text-stone-400 mb-1">Experience</label>
+                                <select id="guestExperience" name="guestExperience" class="${partyInput}">${experienceOptions}</select>
+                            </div>
+                            <div>
+                                <label for="guestDish" class="block text-xs font-medium text-stone-400 mb-1">Potluck dish <span class="text-stone-500">(optional)</span></label>
+                                <input type="text" id="guestDish" name="guestDish" maxlength="80"
+                                    value="${escapeHtml(draft.dish)}" placeholder="e.g., Guacamole & Chips" class="${partyInput}">
+                            </div>
+                        </div>
+                        <div class="flex gap-2">
+                            <button type="submit" ${party.busy ? 'disabled' : ''}
+                                class="flex-1 py-2.5 bg-felt-600 hover:bg-felt-500 disabled:opacity-60 text-white font-medium text-sm rounded-lg shadow-md transition flex items-center justify-center gap-2">
+                                <i class="fa-solid ${party.busy ? 'fa-spinner fa-spin' : editing ? 'fa-check' : 'fa-plus'}"></i>
+                                ${party.busy ? 'Saving...' : editing ? 'Save changes' : 'Join the party'}
+                            </button>
+                            ${editing ? `<button type="button" onclick="cancelPartyEdit()" ${party.busy ? 'disabled' : ''} class="px-4 py-2.5 bg-stone-800 hover:bg-stone-700 text-stone-300 border border-stone-700 text-sm font-medium rounded-lg transition">Cancel</button>` : ''}
+                        </div>
+                        <p class="text-xs text-stone-500">Your name, experience, and dish are visible to anyone with this link.</p>
+                    </form>
+                </div>`;
+        }
+
+        function renderPartyRosterCard(playerById, me) {
+            const players = party.data.players;
+            const rows = players.map(p => {
+                const partner = p.partnerId ? playerById.get(p.partnerId) : null;
+                const isMe = me && p.id === me.id;
+                return `
+                    <li class="rounded-lg border ${isMe ? 'border-amber-500/60 bg-amber-950/20' : 'border-stone-800 bg-stone-900/50'} px-3 py-2">
+                        <div class="flex items-center gap-2 flex-wrap">
+                            <span class="font-semibold text-sm text-white break-words">${escapeHtml(p.name)}</span>
+                            ${isMe ? '<span class="text-[10px] font-semibold uppercase tracking-wider text-amber-300">You</span>' : ''}
+                            <span class="ml-auto">${partyExperienceBadge(p.experience)}</span>
+                        </div>
+                        ${partner ? `<div class="text-[11px] text-sky-300/90 mt-0.5"><i class="fa-solid fa-link text-[9px] mr-1"></i>with ${escapeHtml(partner.name)}</div>` : ''}
+                    </li>`;
+            }).join('');
+            return `
+                <div class="${partyCard}">
+                    <h2 class="text-base font-semibold text-white mb-3 flex items-center gap-2">
+                        <i class="fa-solid fa-users text-amber-400"></i> Who's coming
+                        <span class="bg-felt-950 text-felt-300 border border-felt-800 text-xs px-2 py-0.5 rounded-full font-semibold">${players.length}</span>
+                    </h2>
+                    ${players.length ? `<ul class="space-y-2">${rows}</ul>` : '<p class="text-sm text-stone-500">Nobody has joined yet. Be the first!</p>'}
+                </div>`;
+        }
+
+        function renderPartyPotluckCard() {
+            const dishes = party.data.players.filter(p => p.dish);
+            const rows = dishes.map(p => `
+                <li class="flex items-baseline justify-between gap-3">
+                    <span class="text-amber-300 font-medium break-words">${escapeHtml(p.dish)}</span>
+                    <span class="text-stone-400 text-xs shrink-0">${escapeHtml(p.name)}</span>
+                </li>`).join('');
+            return `
+                <div class="${partyCard}">
+                    <h2 class="text-base font-semibold text-white mb-3 flex items-center gap-2">
+                        <i class="fa-solid fa-utensils text-amber-400"></i> Potluck
+                        <span class="bg-stone-800 text-stone-300 border border-stone-700 text-xs px-2 py-0.5 rounded-full font-semibold">${dishes.length}</span>
+                    </h2>
+                    ${dishes.length ? `<ul class="space-y-2 text-sm">${rows}</ul>` : '<p class="text-sm text-stone-500">No dishes yet.</p>'}
+                </div>`;
+        }
+
+        function renderPartySeatingCard(playerById, me) {
+            const d = party.data;
+            const roundLabel = `Round ${d.currentRound + 1}${d.event.roundCount > 1 ? ` of ${d.event.roundCount}` : ''}`;
+            const seatsByTable = new Map(d.tables.map(t => [t.id, []]));
+            d.seating.forEach(s => {
+                const player = playerById.get(s.playerId);
+                if (player && seatsByTable.has(s.tableId)) seatsByTable.get(s.tableId)[s.seatIndex] = player;
+            });
+            const seatedIds = new Set(d.seating.map(s => s.playerId));
+            const anySeated = d.seating.length > 0;
+
+            let body;
+            if (!anySeated) {
+                body = `
+                    <div class="rounded-lg border border-dashed border-stone-700 p-6 text-center">
+                        <i class="fa-solid fa-hat-wizard text-3xl text-stone-600 mb-3"></i>
+                        <p class="text-sm text-stone-300">Pods for ${escapeHtml(roundLabel.toLowerCase())} haven't been drawn yet.</p>
+                        <p class="text-xs text-stone-500 mt-1">This page checks for updates on its own, or tap Refresh.</p>
+                    </div>`;
+            } else {
+                const myTable = me ? d.seating.find(s => s.playerId === me.id) : null;
+                const myTableName = myTable ? (d.tables.find(t => t.id === myTable.tableId) || {}).name : '';
+                const pods = d.tables.filter(t => seatsByTable.get(t.id).some(Boolean)).map(t => {
+                    const seats = Array.from({ length: t.capacity }, (_, i) => seatsByTable.get(t.id)[i]);
+                    const filled = seats.filter(Boolean).length;
+                    const mine = myTable && myTable.tableId === t.id;
+                    const seatRows = seats.map(p => p
+                        ? `<li class="flex items-center gap-2 rounded-md px-2.5 py-1.5 ${me && p.id === me.id ? 'bg-amber-950/40 border border-amber-500/60' : 'bg-stone-900/60 border border-stone-800'}">
+                               <span class="text-sm font-semibold text-white break-words">${escapeHtml(p.name)}</span>
+                               ${me && p.id === me.id ? '<span class="text-[10px] font-semibold uppercase tracking-wider text-amber-300">You</span>' : ''}
+                               <span class="ml-auto">${partyExperienceBadge(p.experience)}</span>
+                           </li>`
+                        : '<li class="rounded-md px-2.5 py-1.5 border border-dashed border-stone-800 text-xs text-stone-600">Open seat</li>'
+                    ).join('');
+                    return `
+                        <div class="rounded-xl border ${mine ? 'border-amber-500/70' : 'border-mtg-border'} bg-stone-950/40 p-4">
+                            <div class="flex items-baseline justify-between gap-2 mb-3">
+                                <h3 class="font-display text-lg font-semibold text-felt-300 break-words">${escapeHtml(t.name)}</h3>
+                                <span class="text-xs text-stone-500 shrink-0">${filled}/${t.capacity}</span>
+                            </div>
+                            <ul class="space-y-1.5">${seatRows}</ul>
+                        </div>`;
+                }).join('');
+                const unseated = d.players.filter(p => !seatedIds.has(p.id));
+                body = `
+                    ${myTableName ? `<div class="mb-4 text-sm text-amber-200 bg-amber-950/30 border border-amber-700/50 rounded-lg px-3 py-2"><i class="fa-solid fa-chair mr-1.5"></i>You're at <span class="font-semibold">${escapeHtml(myTableName)}</span> this round.</div>` : ''}
+                    <div class="grid grid-cols-1 sm:grid-cols-2 gap-4">${pods}</div>
+                    ${unseated.length ? `<p class="mt-4 text-xs text-stone-400"><span class="font-semibold text-stone-300">Not seated yet:</span> ${unseated.map(p => escapeHtml(p.name)).join(', ')}</p>` : ''}`;
+            }
+
+            return `
+                <div class="${partyCard}">
+                    <div class="flex items-center justify-between gap-3 mb-4 flex-wrap">
+                        <h2 class="text-base font-semibold text-white flex items-center gap-2">
+                            <i class="fa-solid fa-chess-board text-felt-400"></i> Seating
+                        </h2>
+                        <div class="flex items-center gap-2">
+                            ${d.event.tournament ? '<span class="text-xs bg-amber-950 text-amber-300 border border-amber-800 px-2 py-0.5 rounded-md"><i class="fa-solid fa-trophy mr-1"></i>Tournament</span>' : ''}
+                            <span class="text-xs bg-stone-800 text-stone-300 border border-stone-700 px-2 py-0.5 rounded-md">${escapeHtml(roundLabel)}</span>
+                        </div>
+                    </div>
+                    ${body}
+                </div>`;
+        }
+
+        function renderPartyPage() {
+            // Keep whatever is typed in the form across a redraw
+            const typed = readPartyForm();
+            if (typed) party.draft = typed;
+
+            const d = party.data;
+            document.title = `${d.name} - Commander Party`;
+            const playerById = new Map(d.players.map(p => [p.id, p]));
+            const me = party.me ? playerById.get(party.me.playerId) || null : null;
+            const expires = formatPartyDate(d.expiresAt);
+
+            document.getElementById('partyRoot').innerHTML = `
+                <header class="bg-mtg-card/90 backdrop-blur border-b border-mtg-border px-4 py-4 sm:px-8">
+                    <div class="max-w-6xl mx-auto flex flex-col sm:flex-row sm:items-center justify-between gap-3">
+                        <div class="flex items-center gap-3 min-w-0">
+                            <div class="w-11 h-11 shrink-0 rounded-xl bg-felt-700 border border-felt-600 flex items-center justify-center text-amber-100 text-xl">
+                                <i class="fa-solid fa-dice-d20"></i>
+                            </div>
+                            <div class="min-w-0">
+                                <h1 class="font-display text-2xl sm:text-3xl font-semibold text-white leading-tight break-words">${escapeHtml(d.name)}</h1>
+                                <p class="text-xs text-stone-400">Commander game night${expires ? ` &bull; link works until ${escapeHtml(expires)}` : ''}</p>
+                            </div>
+                        </div>
+                        <div id="partySyncLine" class="flex items-center gap-3 sm:justify-end">${partySyncLineHtml()}</div>
+                    </div>
+                </header>
+                <main class="max-w-6xl w-full mx-auto p-4 sm:p-6 grid grid-cols-1 lg:grid-cols-12 gap-6 items-start">
+                    <div class="lg:col-span-5 lg:col-start-1 lg:row-start-1">${renderPartyJoinCard(me, playerById)}</div>
+                    <div class="lg:col-span-7 lg:col-start-6 lg:row-start-1 lg:row-span-3">${renderPartySeatingCard(playerById, me)}</div>
+                    <div class="lg:col-span-5 lg:col-start-1 lg:row-start-2">${renderPartyRosterCard(playerById, me)}</div>
+                    <div class="lg:col-span-5 lg:col-start-1 lg:row-start-3">${renderPartyPotluckCard()}</div>
+                </main>`;
+        }
+
+        // Full-page states: loading, waking, not found, expired, error
+        function renderPartyMessage(kind, expiresAt) {
+            const organizerLink = `<a href="${escapeHtml(organizerUrl())}" class="text-felt-300 hover:text-felt-200 underline underline-offset-2">Open the party organizer</a>`;
+            const views = {
+                loading: { spinner: true, title: 'Loading the party...', text: '' },
+                waking: { spinner: true, title: 'Waking up the party server...', text: 'The first visit in a while can take up to a minute.' },
+                notFound: { icon: 'fa-circle-question text-stone-500', title: "We couldn't find that party", text: 'Check that you copied the whole link. It ends with ?party= and a long code.', footer: `Planning your own game night? ${organizerLink}.` },
+                expired: {
+                    icon: 'fa-hourglass-end text-amber-400',
+                    title: 'This party has ended',
+                    text: formatPartyDate(expiresAt) ? `This link expired on ${formatPartyDate(expiresAt)}.` : 'This link has expired.',
+                    footer: `Planning another game night? ${organizerLink}.`
+                },
+                error: { icon: 'fa-plug-circle-xmark text-red-400', title: "Couldn't load the party", text: "The server didn't answer. Check your connection and try again.", retry: true }
+            };
+            const v = views[kind];
+            document.title = 'Commander Party';
+            document.getElementById('partyRoot').innerHTML = `
+                <div class="min-h-[70vh] flex items-center justify-center p-6">
+                    <div class="${partyCard} max-w-md w-full text-center py-10" role="${v.spinner ? 'status' : 'alert'}">
+                        ${v.spinner ? '<div class="party-spinner mx-auto mb-5"></div>' : `<i class="fa-solid ${v.icon} text-4xl mb-4"></i>`}
+                        <h1 class="font-display text-2xl font-semibold text-white">${escapeHtml(v.title)}</h1>
+                        ${v.text ? `<p class="mt-2 text-sm text-stone-400">${escapeHtml(v.text)}</p>` : ''}
+                        ${v.retry ? `<button type="button" onclick="renderPartyMessage('loading'); refreshParty();" class="mt-5 px-4 py-2 bg-felt-600 hover:bg-felt-500 text-white text-sm font-medium rounded-lg transition"><i class="fa-solid fa-rotate mr-1.5"></i>Try again</button>` : ''}
+                        ${v.footer ? `<p class="mt-6 text-xs text-stone-500">${v.footer}</p>` : ''}
+                    </div>
+                </div>`;
         }
 
         // Helper Utility
