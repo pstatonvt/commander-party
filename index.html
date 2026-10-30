@@ -264,17 +264,17 @@
         .share-tab-zone:hover + .share-tab {
             transform: translateX(0);
         }
+        /* The panel appears instantly rather than sliding in: a slide only
+           shows the panel once the animation runs, and browsers can pause
+           or slow animations, which left the page dimmed with no panel. */
         .share-panel {
-            transform: translateX(-100%);
-            transition: transform 0.25s ease;
-            visibility: hidden;
+            display: none;
         }
         .share-panel.open {
-            transform: translateX(0);
-            visibility: visible;
+            display: block;
         }
         @media (prefers-reduced-motion: reduce) {
-            .share-tab, .share-panel { transition: none; }
+            .share-tab { transition: none; }
         }
         .party-spinner {
             width: 2.5rem;
