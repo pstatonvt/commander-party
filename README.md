@@ -23,7 +23,7 @@ The next version moves the site to Azure so a host can generate a private link f
 |---|---|---|
 | A | Database schema, hosting config, search-engine opt-out | Done |
 | B | Guest API: read a party, join, edit your own entry | Done |
-| C | Host API: create, save, and manage parties | Not started |
+| C | Host API: create, save, and manage parties | Done |
 | D | Guest view, join form, and expired-link page | Not started |
 | E | Generate-link button, cloud autosave, live roster | Not started |
 | F | Expired-party cleanup and limit testing | Not started |
