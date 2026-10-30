@@ -28,24 +28,27 @@ db.getPool = async () => {
 };
 
 const host = require('../src/functions/host');
-const { getPrincipal, requireHost } = require('../src/lib/auth');
+const auth = require('../src/lib/auth');
 const { sanitizeState, remapStateIds, serializeState } = require('../src/lib/hostState');
 const limits = require('../src/lib/limits');
+
+process.env.HOST_PASSWORD = 'test-password';
+process.env.HOST_SESSION_SECRET = 'a-test-session-secret-that-is-long-enough';
+delete process.env.HOST_USER_ID;
 
 const PARTY = '0f8fad5b-d9cb-469f-a165-70867728950e';
 const PLAYER = '7c9e6679-7425-40de-944b-e07fc1f90ae7';
 const PARTNER = '16fd2706-8baf-433b-82eb-8c7fada847da';
-const context = { warn() {}, error() {} };
+const context = { log() {}, warn() {}, error() {} };
 
-function principalHeader(overrides = {}) {
-    const principal = { identityProvider: 'github', userId: 'host-user-1', userDetails: 'someone', userRoles: ['anonymous', 'authenticated', 'host'], ...overrides };
-    return Buffer.from(JSON.stringify(principal)).toString('base64');
-}
+const hostCookie = () => `${auth.COOKIE_NAME}=${auth.createSessionToken()}`;
 
-function request({ params = {}, body, principal = principalHeader(), headers = {} } = {}) {
+// session: true sends a valid host cookie, false sends none, or a raw cookie string
+function request({ params = {}, body, session = true, headers = {} } = {}) {
     const text = body === undefined ? '' : JSON.stringify(body);
     const all = { 'content-type': 'application/json', ...headers };
-    if (principal) all['x-ms-client-principal'] = principal;
+    if (session === true) all.cookie = hostCookie();
+    else if (typeof session === 'string') all.cookie = session;
     return { params, headers: new Headers(all), text: async () => text };
 }
 
@@ -63,32 +66,36 @@ const partyRow = (extra = {}) => ({
 test.beforeEach(() => {
     nextResult = null;
     calls = [];
+    process.env.HOST_PASSWORD = 'test-password';
 });
 
-// ---------- auth ----------
+// ---------- sign-in gate ----------
 
-test('getPrincipal decodes the SWA header and rejects junk', () => {
-    const req = request();
-    assert.equal(getPrincipal(req).userId, 'host-user-1');
-    assert.equal(getPrincipal(request({ principal: 'not base64 json' })), null);
-    assert.equal(getPrincipal(request({ principal: principalHeader({ userId: '' }) })), null);
-    assert.equal(getPrincipal(request({ principal: principalHeader({ userId: 'x'.repeat(129) }) })), null);
-    assert.equal(getPrincipal(request({ principal: null })), null);
-});
-
-test('requireHost: 401 when signed out, 403 without the host role', () => {
-    assert.equal(requireHost(request({ principal: null })).response.status, 401);
-    assert.equal(requireHost(request({ principal: principalHeader({ userRoles: ['authenticated'] }) })).response.status, 403);
-    assert.equal(requireHost(request()).ok, true);
-});
-
-test('host routes refuse signed-out and non-host callers before touching the database', async () => {
-    const handlers = [host.createParty, host.listParties, host.getHostParty, host.saveParty, host.deleteParty, host.addPlayer, host.updatePlayer, host.deletePlayer];
+test('host routes refuse callers without a valid session before touching the database', async () => {
+    const handlers = [host.createParty, host.listParties, host.getHostParty, host.saveParty, host.addPlayer, host.updatePlayer, host.deletePlayer];
+    const forged = `${auth.COOKIE_NAME}=${auth.createSessionToken().replace(/.$/, c => (c === 'A' ? 'B' : 'A'))}`;
     for (const handler of handlers) {
-        assert.equal((await call(handler, request({ principal: null, params: { partyId: PARTY, playerId: PLAYER } }))).status, 401);
-        assert.equal((await call(handler, request({ principal: principalHeader({ userRoles: ['authenticated'] }), params: { partyId: PARTY, playerId: PLAYER } }))).status, 403);
+        const params = { partyId: PARTY, playerId: PLAYER };
+        assert.equal((await call(handler, request({ session: false, params }))).status, 401);
+        assert.equal((await call(handler, request({ session: forged, params }))).status, 401);
+        // A GitHub identity header is not a host session
+        const principal = Buffer.from(JSON.stringify({ userId: 'x', userRoles: ['host', 'admin'] })).toString('base64');
+        assert.equal((await call(handler, request({ session: false, params, headers: { 'x-ms-client-principal': principal } }))).status, 401);
     }
     assert.deepEqual(calls, []);
+});
+
+test('host routes are off (503) until the password settings exist', async () => {
+    const cookie = hostCookie();
+    delete process.env.HOST_PASSWORD;
+    const res = await call(host.listParties, request({ session: cookie }));
+    assert.equal(res.status, 503);
+    assert.equal(parse(res).error.code, 'host_login_off');
+    assert.deepEqual(calls, []);
+});
+
+test('there is no host route for deleting a party', () => {
+    assert.equal(host.deleteParty, undefined);
 });
 
 // ---------- state cleaning ----------
@@ -192,7 +199,7 @@ test('createParty: imports the roster, remaps seating, and returns the id map', 
     assert.match(body.idMap.p_1, /^[0-9a-f-]{36}$/);
 
     const { inputs } = calls[1];
-    assert.equal(inputs.hostUserId, 'host-user-1', 'owner comes from the principal, not the body');
+    assert.equal(inputs.hostUserId, 'host', 'owner is the shared host id, not anything in the body');
     assert.equal(inputs.name, 'Friday');
     assert.equal(inputs.maxParties, 20);
     assert.equal(inputs.lifetimeDays, 60);
@@ -247,7 +254,7 @@ test('listParties returns only the fields the picker needs', async () => {
     const body = parse(res);
     assert.deepEqual(Object.keys(body.parties[0]).sort(), ['createdAt', 'expiresAt', 'id', 'isExpired', 'name', 'playerCount', 'updatedAt']);
     assert.equal(body.limit, 20);
-    assert.equal(calls[1].inputs.hostUserId, 'host-user-1');
+    assert.equal(calls[1].inputs.hostUserId, 'host');
 });
 
 test('getHostParty: 404 for bad ids and other hosts, full view for the owner', async () => {
@@ -284,13 +291,6 @@ test('saveParty: validates, then maps outcomes', async () => {
     nextResult = { recordset: [{ Outcome: 'not_found', ExpiresAt: null, UpdatedAt: null }] };
     res = await call(host.saveParty, request({ params: { partyId: PARTY }, body: { state: {} } }));
     assert.equal(res.status, 404);
-});
-
-test('deleteParty: 204 when deleted, 404 otherwise', async () => {
-    nextResult = { recordset: [{ Deleted: 1 }] };
-    assert.equal((await call(host.deleteParty, request({ params: { partyId: PARTY } }))).status, 204);
-    nextResult = { recordset: [{ Deleted: 0 }] };
-    assert.equal((await call(host.deleteParty, request({ params: { partyId: PARTY } }))).status, 404);
 });
 
 // ---------- players ----------

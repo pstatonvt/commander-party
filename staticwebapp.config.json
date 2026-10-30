@@ -1,6 +1,6 @@
 {
   "routes": [
-    { "route": "/api/host/*", "allowedRoles": ["host"] },
+    { "route": "/api/manage/*", "allowedRoles": ["admin", "host"] },
     { "route": "/api/*", "allowedRoles": ["anonymous"] },
 
     { "route": "/.auth/login/github", "allowedRoles": ["anonymous"] },

@@ -1,9 +1,8 @@
 'use strict';
 
-// Host endpoints under /api/host/*. staticwebapp.config.json only lets the
-// `host` role reach them, requireHost() checks the role again, and every
-// query is scoped to the signed-in host's userId, so a host can only ever see
-// or change their own parties.
+// Host endpoints under /api/host/*. requireHost() only lets through requests
+// carrying a valid host session cookie (see lib/auth.js), and every query is
+// scoped to the host's user id.
 //
 // Party state (tables, rounds, results, settings) is saved as one JSON blob.
 // Players are separate rows that guests can add to at any time, so the host
@@ -378,30 +377,7 @@ async function saveParty(request, context, principal) {
     }
 }
 
-// ---------- DELETE /api/host/parties/{partyId} ----------
-
-const DELETE_PARTY_SQL = `
-SET NOCOUNT ON;
-SET XACT_ABORT ON;
-BEGIN TRANSACTION;
-DELETE FROM dbo.Parties WHERE Id = @partyId AND HostUserId = @hostUserId;
-DECLARE @deleted INT = @@ROWCOUNT;
-IF @deleted = 1 DELETE FROM dbo.JoinAttempts WHERE PartyId = @partyId;
-COMMIT TRANSACTION;
-SELECT @deleted AS Deleted;`;
-
-async function deleteParty(request, context, principal) {
-    const partyId = normalizeGuid(request.params.partyId);
-    if (!partyId) return notFound();
-
-    const pool = await getPool();
-    const result = await pool.request()
-        .input('partyId', sql.UniqueIdentifier, partyId)
-        .input('hostUserId', sql.NVarChar(128), principal.userId)
-        .query(DELETE_PARTY_SQL);
-
-    return result.recordset[0].Deleted === 1 ? { status: 204, headers: { 'Cache-Control': 'no-store' } } : notFound();
-}
+// Deleting a party is admin-only: see manage.js.
 
 // ---------- POST /api/host/parties/{partyId}/players ----------
 
@@ -614,7 +590,6 @@ const routes = [
     ['hostListParties', 'GET', 'host/parties', listParties],
     ['hostGetParty', 'GET', 'host/parties/{partyId}', getHostParty],
     ['hostSaveParty', 'PUT', 'host/parties/{partyId}', saveParty],
-    ['hostDeleteParty', 'DELETE', 'host/parties/{partyId}', deleteParty],
     ['hostAddPlayer', 'POST', 'host/parties/{partyId}/players', addPlayer],
     ['hostUpdatePlayer', 'PUT', 'host/parties/{partyId}/players/{playerId}', updatePlayer],
     ['hostDeletePlayer', 'DELETE', 'host/parties/{partyId}/players/{playerId}', deletePlayer]
@@ -625,8 +600,8 @@ for (const [name, method, route, handler] of routes) {
 }
 
 module.exports = {
-    createParty, listParties, getHostParty, saveParty, deleteParty, addPlayer, updatePlayer, deletePlayer,
+    createParty, listParties, getHostParty, saveParty, addPlayer, updatePlayer, deletePlayer,
     withHost, readImportedPlayers,
-    CREATE_PARTY_SQL, LIST_PARTIES_SQL, SELECT_HOST_PARTY, SAVE_PARTY_SQL, DELETE_PARTY_SQL,
+    CREATE_PARTY_SQL, LIST_PARTIES_SQL, SELECT_HOST_PARTY, SAVE_PARTY_SQL,
     ADD_PLAYER_SQL, UPDATE_PLAYER_SQL, DELETE_PLAYER_SQL
 };

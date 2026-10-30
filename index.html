@@ -2825,8 +2825,16 @@
             listenersAdded: false
         };
 
-        const hostAuth = { checked: false, signedIn: false, isHost: false, user: '' };
+        // Hosts unlock with the shared host password (a session cookie the API
+        // checks). The admin signs in with GitHub and can delete any party.
+        const hostAuth = { checked: false, isHost: false, configured: true };
+        const adminAuth = { signedIn: false, isAdmin: false, user: '' };
+        const ADMIN_ROLES = ['admin', 'host'];
         let hostParties = null;
+        let adminParties = null;
+        let loginBusy = false;
+        let loginSlow = false;
+        let loginError = '';
         let shareMessage = '';
         let shareMessageIsError = false;
         let shareBusy = false;
@@ -2857,27 +2865,26 @@
             }
         }
 
+        // Checks both kinds of sign-in. Neither check touches the database.
         async function refreshHostAuth() {
-            try {
-                const res = await fetch('/.auth/me', { cache: 'no-store' });
-                const data = res.ok ? await res.json() : null;
-                const principal = data && data.clientPrincipal;
-                hostAuth.signedIn = !!principal;
-                hostAuth.isHost = !!principal && Array.isArray(principal.userRoles) && principal.userRoles.includes('host');
-                hostAuth.user = principal ? String(principal.userDetails || '') : '';
-            } catch {
-                hostAuth.signedIn = false;
-                hostAuth.isHost = false;
-                hostAuth.user = '';
-            }
+            const [host, admin] = await Promise.all([
+                hostFetch('GET', '/auth/me'),
+                fetch('/.auth/me', { cache: 'no-store' }).then(r => (r.ok ? r.json() : null)).catch(() => null)
+            ]);
+            hostAuth.isHost = host.status === 200 && !!host.body && host.body.host === true;
+            hostAuth.configured = !(host.status === 200 && host.body && host.body.configured === false);
+            const principal = admin && admin.clientPrincipal;
+            adminAuth.signedIn = !!principal;
+            adminAuth.isAdmin = !!principal && Array.isArray(principal.userRoles) && principal.userRoles.some(r => ADMIN_ROLES.includes(r));
+            adminAuth.user = principal ? String(principal.userDetails || '') : '';
             hostAuth.checked = true;
         }
 
-        function signInUrl() {
+        function adminSignInUrl() {
             return `/.auth/login/github?post_login_redirect_uri=${encodeURIComponent(window.location.pathname + window.location.search)}`;
         }
 
-        function signOutUrl() {
+        function adminSignOutUrl() {
             return `/.auth/logout?post_logout_redirect_uri=${encodeURIComponent(window.location.pathname + window.location.search)}`;
         }
 
@@ -2990,7 +2997,7 @@
 
         function cloudBadgeLabel() {
             switch (cloud.problem) {
-                case 'signin': return 'Sign in again to save';
+                case 'signin': return 'Enter the host password again to save';
                 case 'expired': return 'This party has expired, so changes are not saved';
                 case 'gone': return 'This party was deleted, so changes are not saved';
                 case 'rejected': return `Not saved: ${cloud.problemText}`;
@@ -3206,6 +3213,7 @@
             refreshHostAuth().then(() => {
                 renderSharePanel();
                 if (hostAuth.isHost) loadHostParties();
+                if (adminAuth.isAdmin) loadAdminParties();
             });
         }
 
@@ -3267,39 +3275,90 @@
             const message = shareMessage
                 ? `<div class="rounded-lg px-3 py-2 ${shareMessageIsError ? 'text-red-300 bg-red-950/50 border border-red-900/70' : 'text-emerald-300 bg-emerald-950/50 border border-emerald-800/70'}" role="status">${escapeHtml(shareMessage)}</div>`
                 : '';
-            const account = hostAuth.signedIn
-                ? `<p class="text-xs text-stone-500 pt-4 border-t border-mtg-border">Signed in as ${escapeHtml(hostAuth.user || 'GitHub user')}. <a href="${escapeHtml(signOutUrl())}" class="text-felt-300 hover:text-felt-200 underline underline-offset-2">Sign out</a></p>`
-                : '';
 
             if (!hostAuth.checked) {
                 body.innerHTML = '<p class="text-stone-400">Checking sign-in...</p>';
-            } else if (cloud.active) {
-                body.innerHTML = message + shareLinkHtml() + partiesListHtml() + account;
-            } else if (!hostAuth.signedIn) {
-                body.innerHTML = `
-                    <p class="text-stone-300">Make a private link for this event. Guests who open it can add their name, experience, and potluck dish, and see the seating.</p>
-                    <p class="text-stone-400 text-xs">Only the host's account can make links. Guests don't need to sign in.</p>
-                    <a href="${escapeHtml(signInUrl())}" class="${shareButton}"><i class="fa-brands fa-github"></i> Sign in with GitHub</a>`;
-            } else if (!hostAuth.isHost) {
-                body.innerHTML = `
-                    <p class="text-stone-300">This account can't host parties.</p>
-                    <p class="text-stone-400 text-xs">Guests don't need to sign in. They just open the link the host shares.</p>` + account;
-            } else {
-                body.innerHTML = message + `
-                    <div class="space-y-3">
-                        <p class="text-stone-300">Make a private link for this event. Guests who open it can add their name, experience, and potluck dish, and see the seating.</p>
-                        <div>
-                            <label for="partyNameInput" class="block text-xs font-medium text-stone-400 mb-1">Party name</label>
-                            <input type="text" id="partyNameInput" maxlength="80" value="${escapeHtml(sharePartyNameDraft !== null ? sharePartyNameDraft : defaultPartyName())}" ${shareBusy ? 'readonly' : ''}
-                                class="w-full bg-stone-900/90 border border-stone-700 rounded-lg px-3 py-2 text-base sm:text-sm text-white focus:outline-none focus:border-felt-500 focus:ring-1 focus:ring-felt-500">
-                        </div>
-                        ${shareBusy && shareSlow ? `<div class="rounded-lg px-3 py-2 text-amber-200 bg-amber-950/40 border border-amber-800/60 text-xs" role="status">${escapeHtml(SLOW_WAKE_NOTE)}</div>` : ''}
-                        <button type="button" onclick="generatePartyLink()" ${shareBusy ? 'disabled' : ''} class="${shareButton}">
-                            <i class="fa-solid ${shareBusy ? 'fa-spinner fa-spin' : 'fa-link'}"></i> ${shareBusy ? (shareSlow ? 'Waking up the database...' : 'Creating...') : 'Generate link'}
-                        </button>
-                        <p class="text-xs text-stone-500">This copies the event on screen, with its ${players.length} player${players.length === 1 ? '' : 's'}, into a shared party that saves to the cloud. The event saved in this browser stays as it is. Links stop working after 60 days.</p>
-                    </div>` + partiesListHtml() + account;
+                return;
             }
+            const parts = [message];
+            if (cloud.active) parts.push(shareLinkHtml());
+            if (!hostAuth.isHost) parts.push(hostPasswordFormHtml());
+            else if (!cloud.active) parts.push(generateFormHtml());
+            if (hostAuth.isHost) parts.push(partiesListHtml(), hostAccountHtml());
+            parts.push(adminSectionHtml());
+            body.innerHTML = parts.join('');
+        }
+
+        function generateFormHtml() {
+            return `
+                <div class="space-y-3">
+                    <p class="text-stone-300">Make a private link for this event. Guests who open it can add their name, experience, and potluck dish, and see the seating.</p>
+                    <div>
+                        <label for="partyNameInput" class="block text-xs font-medium text-stone-400 mb-1">Party name</label>
+                        <input type="text" id="partyNameInput" maxlength="80" value="${escapeHtml(sharePartyNameDraft !== null ? sharePartyNameDraft : defaultPartyName())}" ${shareBusy ? 'readonly' : ''}
+                            class="w-full bg-stone-900/90 border border-stone-700 rounded-lg px-3 py-2 text-base sm:text-sm text-white focus:outline-none focus:border-felt-500 focus:ring-1 focus:ring-felt-500">
+                    </div>
+                    ${shareBusy && shareSlow ? `<div class="rounded-lg px-3 py-2 text-amber-200 bg-amber-950/40 border border-amber-800/60 text-xs" role="status">${escapeHtml(SLOW_WAKE_NOTE)}</div>` : ''}
+                    <button type="button" onclick="generatePartyLink()" ${shareBusy ? 'disabled' : ''} class="${shareButton}">
+                        <i class="fa-solid ${shareBusy ? 'fa-spinner fa-spin' : 'fa-link'}"></i> ${shareBusy ? (shareSlow ? 'Waking up the database...' : 'Creating...') : 'Generate link'}
+                    </button>
+                    <p class="text-xs text-stone-500">This copies the event on screen, with its ${players.length} player${players.length === 1 ? '' : 's'}, into a shared party that saves to the cloud. The event saved in this browser stays as it is. Links stop working after 60 days.</p>
+                </div>`;
+        }
+
+        function hostPasswordFormHtml() {
+            const intro = cloud.active
+                ? 'Enter the host password to keep saving this party.'
+                : 'Make a private link for this event. Guests who open it can add their name, experience, and potluck dish, and see the seating.';
+            const notSetUp = hostAuth.configured
+                ? ''
+                : `<div class="rounded-lg px-3 py-2 text-amber-200 bg-amber-950/40 border border-amber-800/60 text-xs">${escapeHtml("Host sign-in isn't set up on the server yet.")}</div>`;
+            return `
+                <form onsubmit="submitHostPassword(event)" class="space-y-3">
+                    <p class="text-stone-300">${escapeHtml(intro)}</p>
+                    ${notSetUp}
+                    <div>
+                        <label for="hostPasswordInput" class="block text-xs font-medium text-stone-400 mb-1">Host password</label>
+                        <input type="password" id="hostPasswordInput" name="password" autocomplete="current-password" maxlength="200" ${loginBusy ? 'readonly' : ''}
+                            class="w-full bg-stone-900/90 border border-stone-700 rounded-lg px-3 py-2 text-base sm:text-sm text-white focus:outline-none focus:border-felt-500 focus:ring-1 focus:ring-felt-500">
+                    </div>
+                    ${loginError ? `<div class="rounded-lg px-3 py-2 text-red-300 bg-red-950/50 border border-red-900/70 text-sm" role="alert">${escapeHtml(loginError)}</div>` : ''}
+                    ${loginBusy && loginSlow ? `<div class="rounded-lg px-3 py-2 text-amber-200 bg-amber-950/40 border border-amber-800/60 text-xs" role="status">${escapeHtml(SLOW_WAKE_NOTE)}</div>` : ''}
+                    <button type="submit" ${loginBusy ? 'disabled' : ''} class="${shareButton}">
+                        <i class="fa-solid ${loginBusy ? 'fa-spinner fa-spin' : 'fa-lock-open'}"></i> ${loginBusy ? (loginSlow ? 'Waking up the database...' : 'Checking...') : 'Unlock'}
+                    </button>
+                    <p class="text-xs text-stone-500">Only hosts need the password. Guests just open the link you send them.</p>
+                </form>`;
+        }
+
+        function hostAccountHtml() {
+            return `<p class="text-xs text-stone-500 pt-4 border-t border-mtg-border">Unlocked with the host password on this device. <button type="button" onclick="signOutHost()" class="text-felt-300 hover:text-felt-200 underline underline-offset-2">Lock</button></p>`;
+        }
+
+        function adminSectionHtml() {
+            if (!adminAuth.signedIn) {
+                return `<p class="pt-4 border-t border-mtg-border text-xs"><a href="${escapeHtml(adminSignInUrl())}" class="text-stone-500 hover:text-stone-300 underline underline-offset-2"><i class="fa-brands fa-github mr-1"></i>Admin sign-in</a></p>`;
+            }
+            if (!adminAuth.isAdmin) {
+                return `<p class="pt-4 border-t border-mtg-border text-xs text-stone-500">Signed in to GitHub as ${escapeHtml(adminAuth.user || 'someone')}, which ${escapeHtml("isn't")} an admin account. <a href="${escapeHtml(adminSignOutUrl())}" class="text-felt-300 hover:text-felt-200 underline underline-offset-2">Sign out</a></p>`;
+            }
+            const rows = (adminParties || []).map(p => `
+                        <li class="flex items-center gap-2 px-3 py-2 rounded-lg border border-stone-800">
+                            <div class="min-w-0 flex-1">
+                                <a href="${escapeHtml(window.location.pathname)}?party=${escapeHtml(p.id)}" class="block font-medium text-stone-200 hover:text-white break-words">${escapeHtml(p.name)}</a>
+                                <span class="block text-[11px] text-stone-500">${p.playerCount} player${p.playerCount === 1 ? '' : 's'} &bull; ${p.isExpired ? 'Expired' : `Until ${escapeHtml(formatPartyDate(p.expiresAt))}`}</span>
+                            </div>
+                            <button type="button" onclick="adminDeleteParty('${escapeHtml(p.id)}')" class="shrink-0 px-2 py-1 text-[11px] text-red-300 hover:text-red-100 hover:bg-red-950/60 border border-red-900/60 rounded-md transition">Delete</button>
+                        </li>`).join('');
+            const list = adminParties === null
+                ? '<p class="text-xs text-stone-500">Loading parties...</p>'
+                : (rows ? `<ul class="space-y-1.5">${rows}</ul>` : '<p class="text-xs text-stone-500">No parties yet.</p>');
+            return `
+                <div class="pt-4 border-t border-mtg-border space-y-2">
+                    <h3 class="text-xs font-semibold uppercase tracking-wider text-red-300/80"><i class="fa-solid fa-shield-halved mr-1"></i>Admin: all parties</h3>
+                    ${list}
+                    <p class="text-xs text-stone-500">Signed in to GitHub as ${escapeHtml(adminAuth.user || 'admin')}. <a href="${escapeHtml(adminSignOutUrl())}" class="text-felt-300 hover:text-felt-200 underline underline-offset-2">Sign out</a></p>
+                </div>`;
         }
 
         function shareLinkHtml() {
@@ -3325,7 +3384,7 @@
                         <a href="${escapeHtml(shareUrl())}&amp;view=guest" target="_blank" rel="noopener" class="${shareSecondary}"><i class="fa-solid fa-eye"></i> Preview as a guest</a>
                         <a href="${escapeHtml(organizerUrl())}" class="${shareSecondary}"><i class="fa-solid fa-house"></i> My saved event</a>
                     </div>
-                    <button type="button" onclick="deleteCloudParty()" class="text-xs text-red-300 hover:text-red-200 underline underline-offset-2">Delete this party</button>
+                    ${adminAuth.isAdmin ? `<button type="button" onclick="adminDeleteParty('${escapeHtml(cloud.partyId)}')" class="text-xs text-red-300 hover:text-red-200 underline underline-offset-2">Delete this party (admin)</button>` : ''}
                 </div>`;
         }
 
@@ -3344,7 +3403,7 @@
             }).join('');
             return `
                 <div class="pt-4 border-t border-mtg-border">
-                    <h3 class="text-xs font-semibold uppercase tracking-wider text-stone-400 mb-2">Your parties <span class="text-stone-500 normal-case tracking-normal font-normal">(${list.length} of ${hostParties.limit})</span></h3>
+                    <h3 class="text-xs font-semibold uppercase tracking-wider text-stone-400 mb-2">Host parties <span class="text-stone-500 normal-case tracking-normal font-normal">(${list.length} of ${hostParties.limit})</span></h3>
                     <ul class="space-y-1.5">${rows}</ul>
                 </div>`;
         }
@@ -3409,9 +3468,10 @@
                 return;
             }
             if (result.status === 401 || result.status === 403) {
-                shareMessage = 'Your sign-in has expired. Sign out and back in, then try again.';
+                hostAuth.isHost = false;
+                shareMessage = 'Your host sign-in has expired. Enter the host password again.';
             } else if (result.status === 0 || result.status >= 500) {
-                shareMessage = "The party database is still waking up. Give it a minute, then click Generate link again. If your party was created anyway, it's listed under Your parties below.";
+                shareMessage = "The party database is still waking up. Give it a minute, then click Generate link again. If your party was created anyway, it's listed under Host parties below.";
                 loadHostParties();
             } else {
                 shareMessage = partyErrorMessage(result);
@@ -3442,15 +3502,113 @@
             }
         }
 
-        async function deleteCloudParty() {
-            if (!confirm(`Delete "${cloud.name}"? The guest link stops working and the shared roster is lost. The event saved in this browser is not affected.`)) return;
-            const result = await partyRequest('DELETE', `/host/parties/${cloud.partyId}`);
-            if (result.status === 204 || result.status === 404) {
-                cloud.problem = 'gone';
+        // Unlock hosting with the shared password. The API sets a session cookie.
+        async function submitHostPassword(e) {
+            e.preventDefault();
+            if (loginBusy) return;
+            const input = document.getElementById('hostPasswordInput');
+            const password = input ? input.value : '';
+            if (!password) {
+                loginError = 'Enter the host password.';
+                renderSharePanel();
+                return;
+            }
+            // Redraws rebuild the form, so put the typed password back each time
+            const redraw = () => {
+                renderSharePanel();
+                const box = document.getElementById('hostPasswordInput');
+                if (box) box.value = password;
+            };
+            loginBusy = true;
+            loginSlow = false;
+            loginError = '';
+            redraw();
+            const slowTimer = setTimeout(() => {
+                if (!loginBusy) return;
+                loginSlow = true;
+                redraw();
+            }, SLOW_NOTICE_MS);
+
+            // Retry while the database wakes up, but not when sign-in is simply switched off
+            const retryDelays = [5000, 10000, 20000];
+            let result;
+            for (let attempt = 0; ; attempt++) {
+                result = await hostFetch('POST', '/auth/login', { password });
+                const switchedOff = result.status === 503 && result.body && result.body.error && result.body.error.code === 'host_login_off';
+                const stillWaking = !switchedOff && (result.status === 0 || result.status === 502 || result.status === 503 || result.status === 504 || result.gatewayTimeout);
+                if (!stillWaking || attempt >= retryDelays.length) break;
+                loginSlow = true;
+                redraw();
+                await partySleep(retryDelays[attempt]);
+            }
+            clearTimeout(slowTimer);
+            loginBusy = false;
+            loginSlow = false;
+
+            if (result.status === 204) {
+                await refreshHostAuth();
+                if (cloud.active && cloud.problem === 'signin') {
+                    cloud.problem = '';
+                    setCloudBadge();
+                    if (cloud.savedSeq !== cloud.changeSeq) flushCloudSave();
+                }
+                shareMessage = cloud.active ? 'Unlocked. Changes save again.' : 'Unlocked. Name your party and generate a link.';
+                shareMessageIsError = false;
+                renderSharePanel();
+                loadHostParties();
+                return;
+            }
+            const code = result.body && result.body.error && result.body.error.code;
+            if (result.status === 401) loginError = "That password isn't right.";
+            else if (code === 'host_login_off') loginError = "Host sign-in isn't set up on the server yet.";
+            else if (result.status === 0 || result.status >= 500) loginError = 'The party database is still waking up. Give it a minute and try again.';
+            else loginError = partyErrorMessage(result);
+            renderSharePanel();
+            const box = document.getElementById('hostPasswordInput');
+            if (box) box.focus();
+        }
+
+        // Forget the host password on this device
+        async function signOutHost() {
+            await hostFetch('POST', '/auth/logout');
+            hostAuth.isHost = false;
+            hostParties = null;
+            if (cloud.active) {
                 window.location.href = organizerUrl();
                 return;
             }
-            alert(partyErrorMessage(result));
+            shareMessage = '';
+            renderSharePanel();
+        }
+
+        async function loadAdminParties() {
+            const result = await hostFetch('GET', '/manage/parties');
+            if (result.status === 200 && result.body) {
+                adminParties = result.body.parties;
+                if (sharePanelOpen()) renderSharePanel();
+            }
+        }
+
+        // Admin only: delete any party and its guest list
+        async function adminDeleteParty(partyId) {
+            const known = (adminParties || []).find(p => p.id === partyId);
+            const name = known ? known.name : (cloud.active && cloud.partyId === partyId ? cloud.name : 'this party');
+            if (!confirm(`Delete "${name}"? Its guest link stops working and its guest list is lost. Events saved in browsers are not affected.`)) return;
+            const result = await partyRequest('DELETE', `/manage/parties/${partyId}`);
+            if (result.status === 204 || result.status === 404) {
+                if (cloud.active && cloud.partyId === partyId) {
+                    cloud.problem = 'gone';
+                    window.location.href = organizerUrl();
+                    return;
+                }
+                showToast(`Deleted "${name}"`);
+                loadAdminParties();
+                if (hostAuth.isHost) loadHostParties();
+                return;
+            }
+            alert(result.status === 401 || result.status === 403
+                ? 'Sign in again with the admin GitHub account.'
+                : partyErrorMessage(result));
         }
 
         function showToast(text) {

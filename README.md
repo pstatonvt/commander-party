@@ -19,11 +19,11 @@ Live site: https://commanderparty.com
 ## Sharing a party
 
 1. Open the organizer and set up the event as usual.
-2. Hover the top-left corner and click **Generate link**, or tap **Share link** under the save badge. Sign in with the host's GitHub account the first time.
+2. Hover the top-left corner and click **Generate link**, or tap **Share link** under the save badge. The first time on each device, enter the host password. It stays unlocked on that device for 30 days.
 3. Name the party and click **Generate link**. Copy the link and send it to your guests.
 4. Guests open the link and add themselves. They show up in your roster, unseated, within about a minute. Seat them as usual.
 
-The shared party saves to the cloud, so you can open the same link on another device and pick up where you left off. The event saved in your browser isn't changed. Links stop working 60 days after they're made. Import and Clear All Data only work on the event saved in your browser, so they're turned off while a shared party is open.
+The shared party saves to the cloud, so you can open the same link on another unlocked device and pick up where you left off. Only the site admin can delete a party: the Share panel has an **Admin sign-in** link for the admin's GitHub account. The event saved in your browser isn't changed. Links stop working 60 days after they're made. Import and Clear All Data only work on the event saved in your browser, so they're turned off while a shared party is open.
 
 ## Shareable links: build status
 
@@ -72,6 +72,6 @@ The tests use a fake database. Running the API itself needs a SQL Server databas
 
 ## Security
 
-Party links are unguessable random IDs, and only the host can change a party's seating or settings. The API caps players per party, limits how often one visitor can join, rejects oversized or malformed requests, and never returns other guests' edit tokens. The full model, including its limits, is in [docs/azure-plan.md](docs/azure-plan.md).
+Party links are unguessable random IDs. Only hosts, who unlock with a shared host password, can make parties or change a party's seating and settings. The password is kept only on the server, never in this code. Only the admin, signed in with GitHub, can delete parties. Wrong host-password guesses are limited per visitor and overall. The API caps players per party, limits how often one visitor can join, rejects oversized or malformed requests, and never returns other guests' edit tokens. The full model, including its limits, is in [docs/azure-plan.md](docs/azure-plan.md).
 
 If you find a security problem, please contact the maintainer through their GitHub profile instead of opening a public issue.

@@ -32,6 +32,15 @@ module.exports = Object.freeze({
     STATE_ID_MAX: 64,
     TABLE_NAME_MAX: 80,
 
+    // Host password guessing. Wrong guesses are recorded in JoinAttempts under
+    // LOGIN_BUCKET_ID (a reserved id no party uses). One IP gets this many wrong
+    // guesses per window, and everyone together gets the hourly total, before
+    // sign-in is refused for a while.
+    LOGIN_BUCKET_ID: '00000000-0000-0000-0000-000000000001',
+    LOGIN_FAILURES_PER_IP: 5,
+    LOGIN_WINDOW_MINUTES: 15,
+    LOGIN_FAILURES_PER_HOUR: 50,
+
     // The weekly cleanup deletes parties this many days after they expire.
     PURGE_GRACE_DAYS: 30,
 

@@ -5,9 +5,10 @@
 // Called weekly by .github/workflows/purge-expired.yml. Deletes parties more
 // than PURGE_GRACE_DAYS past their expiry (their players go with them), and
 // join-rate-limit records older than an hour or for parties that no longer
-// exist. The caller must send the PURGE_SECRET app setting in the
-// x-purge-secret header. Anything else gets the same 404 as an unknown route,
-// before the database is touched.
+// exist. Recent wrong host-password guesses are kept, so a lockout holds.
+// The caller must send the PURGE_SECRET app setting in the x-purge-secret
+// header. Anything else gets the same 404 as an unknown route, before the
+// database is touched.
 //
 // The route isn't under /api/admin because Azure Functions reserves routes
 // that start with "admin" for its own management API.
@@ -48,7 +49,7 @@ SET @parties = @@ROWCOUNT;
 
 DELETE FROM dbo.JoinAttempts
 WHERE AttemptedAt < DATEADD(HOUR, -1, @now)
-   OR PartyId NOT IN (SELECT Id FROM dbo.Parties);
+   OR (PartyId NOT IN (SELECT Id FROM dbo.Parties) AND PartyId <> @loginBucket);
 SET @attempts = @@ROWCOUNT;
 
 COMMIT TRANSACTION;
@@ -64,6 +65,7 @@ async function purge(request, context) {
     const pool = await getPool();
     const result = await pool.request()
         .input('graceDays', sql.Int, limits.PURGE_GRACE_DAYS)
+        .input('loginBucket', sql.UniqueIdentifier, limits.LOGIN_BUCKET_ID)
         .query(PURGE_SQL);
 
     const row = result.recordset[0];
