@@ -2,7 +2,7 @@
 
 A single-page organizer for Magic: The Gathering Commander game nights. It tracks who's coming, their experience level, and what they're bringing to the potluck, then seats everyone into pods round by round.
 
-Live site: https://purple-dune-064af1710.3.azurestaticapps.net
+Live site: https://commanderparty.com
 
 ## Features
 

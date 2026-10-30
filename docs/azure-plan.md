@@ -144,7 +144,7 @@ Only the maintainer gets the `host` role: in the portal, SWA > Role management >
 8. Create Static Web App: plan **Free**, source GitHub, this repo, branch `main`, build preset Custom, app location `/`, api location `api`, output location `.`. Azure commits the workflow file to the repo, so run `git pull --rebase` before your next push. The first Actions run may fail or deploy without the API until `api/` is on `main`.
 9. SWA > Settings > Environment variables: add `SQL_CONNECTION_STRING`, `IP_HASH_SALT` (a long random string, used to hash guest IPs for rate limiting), and `PURGE_SECRET` (another long random string).
 10. SWA > Role management > Invite: provider GitHub, your GitHub username, role `host`, expiry max. Accept the invite link.
-11. Note the new URL (`https://<name>.azurestaticapps.net`). Optionally add a custom domain later (free on SWA).
+11. Note the new URL (`https://<name>.azurestaticapps.net`). Optionally add a custom domain (free on SWA). This project uses https://commanderparty.com: the domain is registered at Cloudflare with DNS-only CNAME records for the apex (flattened) and `www`, both pointing at the `azurestaticapps.net` hostname, and Azure issues the certificates. In the Static Web App's Custom domains page, set it as the default domain so the `www` and `azurestaticapps.net` addresses redirect to it with a 301, keeping the `?party=` query string. Share links use whatever address the organizer is open on, so open it at the custom domain before generating links.
 12. In GitHub repo Settings > Secrets, add `PURGE_SECRET` with the same value for the nightly workflow.
 
 **Phase 3: retire GitHub Pages** (done)
