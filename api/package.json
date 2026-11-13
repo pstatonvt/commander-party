@@ -12,6 +12,6 @@
   },
   "dependencies": {
     "@azure/functions": "^4.17.0",
-    "mssql": "^12.7.0"
+    "mssql": "^12.7.14"
   }
 }
