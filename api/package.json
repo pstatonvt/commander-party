@@ -11,7 +11,7 @@
     "test": "node --test \"test/**/*.test.js\""
   },
   "dependencies": {
-    "@azure/functions": "^4.17.0",
+    "@azure/functions": "^4.17.1",
     "mssql": "^12.7.0"
   }
 }
